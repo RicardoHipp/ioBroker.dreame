@@ -3352,6 +3352,14 @@ class Dreame extends utils.Adapter {
               const mappath = `${did}` + '.map.';
               // [FRAME-DIAG] prüfen, ob dieser MQTT-6-1-Push ein binärer Karten-Frame ist (I=73/P=80)
               this._diagFrame('MQTT-6-1', encode);
+              // P-Frame auf laufende Karte mergen -> gemergte CloudData schreiben (für unser Widget)
+              try {
+                if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
+                const merged = this.mapMerger.process(encode);
+                if (merged) await this._writeMerged(did, merged);
+              } catch (e) {
+                this.log.warn('[MERGE] MQTT-Frame: ' + e.message);
+              }
               this.setMapInfos(encode, mappath).catch((err) => this.log.warn('setMapInfos failed: ' + err.message));
             }
           }
@@ -3739,9 +3747,32 @@ class Dreame extends utils.Adapter {
       this.log.info(
         `[FRAME-DIAG] ${tag}: ${typeStr} map=${h.mapId} frame=${h.frameId} ${h.width}x${h.height} grid=${h.gridSize} origin=(${h.originX},${h.originY}) rawLen=${raw.length}`,
       );
+      // Rohframe mitschneiden (erste 15, für Offline-Analyse mit unserem Tool)
+      try {
+        this._capN = this._capN || 0;
+        if (this._capN < 15) {
+          require('fs').appendFileSync(
+            '/tmp/dreame_frames.jsonl',
+            JSON.stringify({ tag, type: h.frameType, frameId: h.frameId, w: h.width, h: h.height, origin: [h.originX, h.originY], b64 }) + '\n',
+          );
+          this._capN++;
+        }
+      } catch (e) {}
     } catch (e) {
       this.log.info(`[FRAME-DIAG] ${tag}: Fehler ${e.message}`);
     }
+  }
+
+  /** Schreibt die gemergte Karte als CloudData-Blob (Format wie dreamehome) in einen State. */
+  async _writeMerged(did, mergedB64) {
+    if (!mergedB64) return;
+    const id = `${did}.map.mergedCloud`;
+    await this.setObjectNotExistsAsync(id, {
+      type: 'state',
+      common: { name: 'Gemergte Live-Karte (CloudData-Format)', type: 'string', role: 'json', read: true, write: false },
+      native: {},
+    });
+    await this.setStateAsync(id, JSON.stringify({ mapstr: [{ id: 0, name: '', angle: '0', map: mergedB64 }], curr_id: 1 }), true);
   }
 
   async setMapInfos(In_Compressed, In_path) {
@@ -4006,6 +4037,14 @@ class Dreame extends utils.Adapter {
         }
       }
       this._diagFrame('getMap-Poll', firstMap.thb || firstMap.map);
+      // I-Frame als Basis in den Merger geben (P-Frames werden darauf gemergt)
+      try {
+        if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
+        const base = this.mapMerger.process(firstMap.thb || firstMap.map);
+        if (base) await this._writeMerged(device.did, base);
+      } catch (e) {
+        this.log.warn('[MERGE] getMap-Basis: ' + e.message);
+      }
       const multiMap = decodeMultiMapData(firstMap.thb || firstMap.map, 0);
       if (multiMap && multiMap.areaInfo) {
         this._areaInfoByDid[device.did] = multiMap.areaInfo;
