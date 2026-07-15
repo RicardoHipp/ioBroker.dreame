@@ -388,6 +388,10 @@ class Dreame extends utils.Adapter {
 
     this.deviceArray = [];
     this.states = {};
+    // P-Frame-Live-Merge: standardmäßig AUS. getMap() holt per force-I immer die frische
+    // Komplett-Karte, daher ist das Live-Overlay der MQTT-P-Frames nicht nötig. Auf true
+    // setzen, um die Live-Akkumulation während der Reinigung wieder zu aktivieren.
+    this.mergePFrames = false;
     this.json2iob = new Json2iob(this);
     this.requestClient = axios.create({
       withCredentials: true,
@@ -3350,15 +3354,16 @@ class Dreame extends utils.Adapter {
               // value is normally a base64-url string; only stringify if it isn't
               const encode = typeof element.value === 'string' ? element.value : JSON.stringify(element.value);
               const mappath = `${did}` + '.map.';
-              // [FRAME-DIAG] prüfen, ob dieser MQTT-6-1-Push ein binärer Karten-Frame ist (I=73/P=80)
-              this._diagFrame('MQTT-6-1', encode);
-              // P-Frame auf laufende Karte mergen -> gemergte CloudData schreiben (für unser Widget)
-              try {
-                if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
-                const merged = this.mapMerger.process(encode);
-                if (merged) await this._writeMerged(did, merged);
-              } catch (e) {
-                this.log.warn('[MERGE] MQTT-Frame: ' + e.message);
+              // P-Frame-Live-Overlay nur wenn aktiviert (siehe this.mergePFrames).
+              if (this.mergePFrames) {
+                this._diagFrame('MQTT-6-1', encode);
+                try {
+                  if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
+                  const merged = this.mapMerger.process(encode);
+                  if (merged) await this._writeMerged(did, merged);
+                } catch (e) {
+                  this.log.warn('[MERGE] MQTT-Frame: ' + e.message);
+                }
               }
               this.setMapInfos(encode, mappath).catch((err) => this.log.warn('setMapInfos failed: ' + err.message));
             }
@@ -3728,38 +3733,27 @@ class Dreame extends utils.Adapter {
   _diagFrame(tag, b64) {
     try {
       if (typeof b64 !== 'string' || b64.length < 20) {
-        this.log.info(`[FRAME-DIAG] ${tag}: kein/zu kurzer String (len=${b64 && b64.length})`);
+        this.log.debug(`[FRAME-DIAG] ${tag}: kein/zu kurzer String (len=${b64 && b64.length})`);
         return;
       }
       let raw;
       try {
         raw = Buffer.from(_zlib.inflateSync(Buffer.from(b64.replace(/-/g, '+').replace(/_/g, '/'), 'base64')));
       } catch (e) {
-        this.log.info(`[FRAME-DIAG] ${tag}: NICHT inflatebar (wohl JSON/cleanset), b64-len=${b64.length}`);
+        this.log.debug(`[FRAME-DIAG] ${tag}: NICHT inflatebar (wohl JSON/cleanset), b64-len=${b64.length}`);
         return;
       }
       if (raw.length < HEADER_SIZE) {
-        this.log.info(`[FRAME-DIAG] ${tag}: inflated, aber < Header (${raw.length})`);
+        this.log.debug(`[FRAME-DIAG] ${tag}: inflated, aber < Header (${raw.length})`);
         return;
       }
       const h = readHeader(raw);
       const typeStr = h.frameType === 73 ? 'I-Frame' : h.frameType === 80 ? 'P-Frame' : `? (${h.frameType})`;
-      this.log.info(
+      this.log.debug(
         `[FRAME-DIAG] ${tag}: ${typeStr} map=${h.mapId} frame=${h.frameId} ${h.width}x${h.height} grid=${h.gridSize} origin=(${h.originX},${h.originY}) rawLen=${raw.length}`,
       );
-      // Rohframe mitschneiden (erste 15, für Offline-Analyse mit unserem Tool)
-      try {
-        this._capN = this._capN || 0;
-        if (this._capN < 15) {
-          require('fs').appendFileSync(
-            '/tmp/dreame_frames.jsonl',
-            JSON.stringify({ tag, type: h.frameType, frameId: h.frameId, w: h.width, h: h.height, origin: [h.originX, h.originY], b64 }) + '\n',
-          );
-          this._capN++;
-        }
-      } catch (e) {}
     } catch (e) {
-      this.log.info(`[FRAME-DIAG] ${tag}: Fehler ${e.message}`);
+      this.log.debug(`[FRAME-DIAG] ${tag}: Fehler ${e.message}`);
     }
   }
 
@@ -3977,19 +3971,91 @@ class Dreame extends utils.Adapter {
   }
 
   async getMap(device, fetchAllMaps) {
-    // Wie HA (request_map, siid 6/aiid 1, frame_type I): Roboter lädt eine FRISCHE,
-    // aktuelle Karte in die Cloud hoch (statt der evtl. veralteten gespeicherten).
+    // --- Wie HA: force-I-Request (siid 6/aiid 1) erzwingt einen KOMPLETTEN, AKTUELLEN
+    //     I-Frame der Arbeitskarte. Die Adresse kommt in der Aktions-ANTWORT zurück
+    //     (out/piid 3 = object_name), NICHT über die (veralteten) MAP_LIST-Properties.
+    //     Ohne force_type liefert der Roboter nur die alte gespeicherte Karte. ---
+    let freshBase64 = null;
     try {
-      await this.sendCommand({
+      const rm = await this.sendCommand({
         did: device.did,
         method: 'action',
-        params: { did: device.did, siid: 6, aiid: 1, in: [{ piid: 2, value: '{"frame_type":"I"}' }] },
+        params: {
+          did: device.did,
+          siid: 6,
+          aiid: 1,
+          in: [{ piid: 2, value: '{"req_type":1,"frame_type":"I","force_type":1}' }],
+        },
       });
-      this.log.info('[MAP] frische Karte angefordert (request_map)');
-      await new Promise((r) => setTimeout(r, 2500)); // kurz warten, bis der Upload bereit ist
+      const res = rm && (rm.result !== undefined ? rm.result : rm);
+      const out = res && res.out;
+      let freshObj = null;
+      if (Array.isArray(out)) {
+        for (const p of out) {
+          if (p.piid === 3 && p.value) freshObj = p.value; // object_name der frischen Karte
+        }
+      }
+      if (freshObj) {
+        await new Promise((r) => setTimeout(r, 1500)); // kurz warten, bis Upload bereit
+        const url = await this.getFile(freshObj, device);
+        const resp = await this.requestClient({ method: 'get', url }).catch((e) => {
+          this.log.warn('[MAP] frisches Objekt Download-Fehler: ' + (e && e.message));
+          return null;
+        });
+        if (resp && resp.data) {
+          // Rohbytes robust holen (je nach Transport: Buffer / ArrayBuffer / Byte-Objekt /
+          // Binär-String). NICHT Buffer.from(string) mit UTF-8 -> das bläht Bytes>127 auf.
+          // Das Objekt kommt i.d.R. als base64-TEXT des zlib-Frames (wie mapstr[].map),
+          // kann je nach Transport aber auch Rohbytes/Byte-Objekt sein. Ziel: zlib-Buffer.
+          const data = resp.data;
+          let buf = null;
+          if (Buffer.isBuffer(data)) buf = data;
+          else if (data instanceof ArrayBuffer) buf = Buffer.from(data);
+          else if (typeof data === 'string') {
+            const b1 = Buffer.from(data, 'base64'); // base64-Text -> Bytes
+            if (b1.length > 2 && b1[0] === 0x78) buf = b1; // zlib-Magic 0x78 -> war base64
+            else {
+              const b2 = Buffer.from(data, 'latin1');
+              if (b2[0] === 0x78) buf = b2;
+            }
+          } else if (data && typeof data === 'object') {
+            const ks = Object.keys(data).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
+            if (ks.length) buf = Buffer.from(ks.map((k) => data[k]));
+          }
+          if (buf && buf.length && buf[0] === 0x78) {
+            // zlib-Frame -> base64 (gleiche Form wie mapstr[].map, Merger inflatet es)
+            freshBase64 = buf.toString('base64');
+            this.log.info(`[MAP] frische Karte geladen (force I): ${freshObj} (${buf.length} B)`);
+          } else {
+            this.log.warn('[MAP] frisches Objekt: kein zlib-Frame erkannt (' + typeof data + ')');
+          }
+        }
+      } else {
+        this.log.debug('[MAP] force-I lieferte kein object_name (evtl. Reinigung aktiv) -> Fallback');
+      }
     } catch (e) {
-      this.log.warn('[MAP] request_map fehlgeschlagen: ' + e.message);
+      this.log.warn('[MAP] request_map(force I) fehlgeschlagen: ' + (e && e.message));
     }
+
+    // Frische Karte als Merger-Basis setzen (ersetzt alte Basis; P-Frames sammeln sich darauf).
+    let freshBaseSet = false;
+    if (freshBase64) {
+      try {
+        if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
+        this.mapMerger.reset();
+        this._diagFrame('getMap-Fresh', freshBase64);
+        const base = this.mapMerger.process(freshBase64);
+        if (base) {
+          await this._writeMerged(device.did, base);
+          freshBaseSet = true;
+        }
+      } catch (e) {
+        this.log.warn('[MERGE] frische Basis: ' + (e && e.message));
+      }
+    }
+
+    // --- Gespeicherte Karte (MAP_LIST/recovery) weiter laden: liefert Raumnamen/areaInfo/
+    //     Segmentstruktur (in der Live-Karte NICHT enthalten) und dient als Fallback-Basis. ---
     let mapFileName;
     const mapFileNameResponse = await this.sendCommand({
       did: device.did,
@@ -4050,13 +4116,19 @@ class Dreame extends utils.Adapter {
         }
       }
       this._diagFrame('getMap-Poll', firstMap.thb || firstMap.map);
-      // I-Frame als Basis in den Merger geben (P-Frames werden darauf gemergt)
-      try {
-        if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
-        const base = this.mapMerger.process(firstMap.thb || firstMap.map);
-        if (base) await this._writeMerged(device.did, base);
-      } catch (e) {
-        this.log.warn('[MERGE] getMap-Basis: ' + e.message);
+      // Gespeicherte Karte nur als Fallback-Basis: wenn die frische Karte griff, NICHT
+      // überschreiben (sonst zurück zur veralteten Karte); sonst nur setzen, wenn der
+      // Merger noch gar keine Basis hat (behält so laufende P-Frame-Akkumulation).
+      if (!freshBaseSet) {
+        try {
+          if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
+          if (!this.mapMerger.current) {
+            const base = this.mapMerger.process(firstMap.thb || firstMap.map);
+            if (base) await this._writeMerged(device.did, base);
+          }
+        } catch (e) {
+          this.log.warn('[MERGE] Fallback-Basis: ' + e.message);
+        }
       }
       const multiMap = decodeMultiMapData(firstMap.thb || firstMap.map, 0);
       if (multiMap && multiMap.areaInfo) {
