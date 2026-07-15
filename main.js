@@ -24,6 +24,8 @@ try {
 }
 
 const { decodeMultiMapData } = require('./lib/dreame');
+const { MapMerger, readHeader, HEADER_SIZE } = require('./lib/mapMerge');
+const _zlib = require('zlib');
 const { getRoomDisplayName, buildSegmentTypeMap } = require('./lib/cleanset');
 
 const BRAND_CONFIG = {
@@ -3348,6 +3350,8 @@ class Dreame extends utils.Adapter {
               // value is normally a base64-url string; only stringify if it isn't
               const encode = typeof element.value === 'string' ? element.value : JSON.stringify(element.value);
               const mappath = `${did}` + '.map.';
+              // [FRAME-DIAG] prüfen, ob dieser MQTT-6-1-Push ein binärer Karten-Frame ist (I=73/P=80)
+              this._diagFrame('MQTT-6-1', encode);
               this.setMapInfos(encode, mappath).catch((err) => this.log.warn('setMapInfos failed: ' + err.message));
             }
           }
@@ -3709,6 +3713,37 @@ class Dreame extends utils.Adapter {
     }
     return decode.toString().match(/[{\[]{1}([,:{}\[\]0-9.\-+Eaeflnr-u \n\r\t]|".*?")+[}\]]{1}/gis);
   }
+  /**
+   * [FRAME-DIAG] Prüft, ob ein base64-Wert ein binärer Dreame-Karten-Frame ist,
+   * und loggt Typ (73=I / 80=P), Größe und Dimensionen. Nur zur Analyse.
+   */
+  _diagFrame(tag, b64) {
+    try {
+      if (typeof b64 !== 'string' || b64.length < 20) {
+        this.log.info(`[FRAME-DIAG] ${tag}: kein/zu kurzer String (len=${b64 && b64.length})`);
+        return;
+      }
+      let raw;
+      try {
+        raw = Buffer.from(_zlib.inflateSync(Buffer.from(b64.replace(/-/g, '+').replace(/_/g, '/'), 'base64')));
+      } catch (e) {
+        this.log.info(`[FRAME-DIAG] ${tag}: NICHT inflatebar (wohl JSON/cleanset), b64-len=${b64.length}`);
+        return;
+      }
+      if (raw.length < HEADER_SIZE) {
+        this.log.info(`[FRAME-DIAG] ${tag}: inflated, aber < Header (${raw.length})`);
+        return;
+      }
+      const h = readHeader(raw);
+      const typeStr = h.frameType === 73 ? 'I-Frame' : h.frameType === 80 ? 'P-Frame' : `? (${h.frameType})`;
+      this.log.info(
+        `[FRAME-DIAG] ${tag}: ${typeStr} map=${h.mapId} frame=${h.frameId} ${h.width}x${h.height} grid=${h.gridSize} origin=(${h.originX},${h.originY}) rawLen=${raw.length}`,
+      );
+    } catch (e) {
+      this.log.info(`[FRAME-DIAG] ${tag}: Fehler ${e.message}`);
+    }
+  }
+
   async setMapInfos(In_Compressed, In_path) {
     const jsondecode = this.uncompress(In_Compressed);
     if (!jsondecode) {
@@ -3970,6 +4005,7 @@ class Dreame extends utils.Adapter {
           firstMap = map;
         }
       }
+      this._diagFrame('getMap-Poll', firstMap.thb || firstMap.map);
       const multiMap = decodeMultiMapData(firstMap.thb || firstMap.map, 0);
       if (multiMap && multiMap.areaInfo) {
         this._areaInfoByDid[device.did] = multiMap.areaInfo;

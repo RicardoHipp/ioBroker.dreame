@@ -35,3 +35,6 @@ PROJEKTSTAND.md
 scripts/
 *.pyc
 __pycache__/
+
+
+push.bat
