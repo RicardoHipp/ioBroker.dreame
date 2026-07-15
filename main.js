@@ -3977,6 +3977,19 @@ class Dreame extends utils.Adapter {
   }
 
   async getMap(device, fetchAllMaps) {
+    // Wie HA (request_map, siid 6/aiid 1, frame_type I): Roboter lädt eine FRISCHE,
+    // aktuelle Karte in die Cloud hoch (statt der evtl. veralteten gespeicherten).
+    try {
+      await this.sendCommand({
+        did: device.did,
+        method: 'action',
+        params: { did: device.did, siid: 6, aiid: 1, in: [{ piid: 2, value: '{"frame_type":"I"}' }] },
+      });
+      this.log.info('[MAP] frische Karte angefordert (request_map)');
+      await new Promise((r) => setTimeout(r, 2500)); // kurz warten, bis der Upload bereit ist
+    } catch (e) {
+      this.log.warn('[MAP] request_map fehlgeschlagen: ' + e.message);
+    }
     let mapFileName;
     const mapFileNameResponse = await this.sendCommand({
       did: device.did,
