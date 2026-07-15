@@ -391,7 +391,7 @@ class Dreame extends utils.Adapter {
     // P-Frame-Live-Merge: standardmäßig AUS. getMap() holt per force-I immer die frische
     // Komplett-Karte, daher ist das Live-Overlay der MQTT-P-Frames nicht nötig. Auf true
     // setzen, um die Live-Akkumulation während der Reinigung wieder zu aktivieren.
-    this.mergePFrames = false;
+    this.mergePFrames = true;
     this.json2iob = new Json2iob(this);
     this.requestClient = axios.create({
       withCredentials: true,
@@ -3359,8 +3359,19 @@ class Dreame extends utils.Adapter {
                 this._diagFrame('MQTT-6-1', encode);
                 try {
                   if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
-                  const merged = this.mapMerger.process(encode);
-                  if (merged) await this._writeMerged(did, merged);
+                  if (!this.mapMerger.current) {
+                    // Keine vollständige Basiskarte -> keinen Fetzen bauen, User informieren (max 1x/60s)
+                    const now = Date.now();
+                    if (!this._noBaseMapWarn || now - this._noBaseMapWarn > 60000) {
+                      this._noBaseMapWarn = now;
+                      this.log.error(
+                        'Es ist noch keine vollständige Karte geladen. Bitte den Adapter einmal starten, während der Roboter in der Ladestation steht (dann wird die komplette Karte geladen).',
+                      );
+                    }
+                  } else {
+                    const merged = this.mapMerger.process(encode);
+                    if (merged) await this._writeMerged(did, merged);
+                  }
                 } catch (e) {
                   this.log.warn('[MERGE] MQTT-Frame: ' + e.message);
                 }
@@ -4116,20 +4127,10 @@ class Dreame extends utils.Adapter {
         }
       }
       this._diagFrame('getMap-Poll', firstMap.thb || firstMap.map);
-      // Gespeicherte Karte nur als Fallback-Basis: wenn die frische Karte griff, NICHT
-      // überschreiben (sonst zurück zur veralteten Karte); sonst nur setzen, wenn der
-      // Merger noch gar keine Basis hat (behält so laufende P-Frame-Akkumulation).
-      if (!freshBaseSet) {
-        try {
-          if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
-          if (!this.mapMerger.current) {
-            const base = this.mapMerger.process(firstMap.thb || firstMap.map);
-            if (base) await this._writeMerged(device.did, base);
-          }
-        } catch (e) {
-          this.log.warn('[MERGE] Fallback-Basis: ' + e.message);
-        }
-      }
+      // WICHTIG: Die gespeicherte Karte (piid 8 = evtl. uralt) wird NICHT nach mergedCloud
+      // geschrieben. Sonst würde während der Reinigung (force-I scheitert) die veraltete
+      // Karte die Live-Karte überschreiben. mergedCloud kommt NUR aus force-I (idle) oder
+      // den P-Frames (Reinigung). Die gespeicherte Karte dient nur Raumnamen/areaInfo.
       const multiMap = decodeMultiMapData(firstMap.thb || firstMap.map, 0);
       if (multiMap && multiMap.areaInfo) {
         this._areaInfoByDid[device.did] = multiMap.areaInfo;
