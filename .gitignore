@@ -37,4 +37,5 @@ scripts/
 __pycache__/
 
 
-push.batPORT_STATUS.md
+push.bat
+PORT_STATUS.md
