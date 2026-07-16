@@ -3359,18 +3359,30 @@ class Dreame extends utils.Adapter {
                 this._diagFrame('MQTT-6-1', encode);
                 try {
                   if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
-                  if (!this.mapMerger.current) {
-                    // Keine vollständige Basiskarte -> keinen Fetzen bauen, User informieren (max 1x/60s)
+                  const merged = this.mapMerger.process(encode);
+                  if (merged) await this._writeMerged(did, merged);
+                  // Wie HA: bei fehlender Basis, Map-ID-Wechsel oder grosser Frame-Luecke
+                  // fordert der Merger eine frische Komplett-Karte an (throttled 60s).
+                  if (this.mapMerger.needMapRequest) {
+                    this.mapMerger.needMapRequest = false;
                     const now = Date.now();
-                    if (!this._noBaseMapWarn || now - this._noBaseMapWarn > 60000) {
-                      this._noBaseMapWarn = now;
-                      this.log.error(
-                        'Es ist noch keine vollständige Karte geladen. Bitte den Adapter einmal starten, während der Roboter in der Ladestation steht (dann wird die komplette Karte geladen).',
-                      );
+                    if (!this._lastAutoMapFetch || now - this._lastAutoMapFetch > 60000) {
+                      this._lastAutoMapFetch = now;
+                      const mDevice = this.deviceArray.find((dv) => String(dv.did) === String(did));
+                      if (mDevice && !this.isMower(mDevice)) {
+                        this.log.debug('[MERGE] Sequenz-Luecke/Map-Wechsel -> frische Karte anfordern');
+                        this.getMap(mDevice, false);
+                      }
                     }
-                  } else {
-                    const merged = this.mapMerger.process(encode);
-                    if (merged) await this._writeMerged(did, merged);
+                    if (!this.mapMerger.current) {
+                      const now2 = Date.now();
+                      if (!this._noBaseMapWarn || now2 - this._noBaseMapWarn > 60000) {
+                        this._noBaseMapWarn = now2;
+                        this.log.error(
+                          'Es ist noch keine vollständige Karte geladen. Bitte den Adapter einmal starten, während der Roboter in der Ladestation steht (dann wird die komplette Karte geladen).',
+                        );
+                      }
+                    }
                   }
                 } catch (e) {
                   this.log.warn('[MERGE] MQTT-Frame: ' + e.message);
@@ -4048,12 +4060,13 @@ class Dreame extends utils.Adapter {
       this.log.warn('[MAP] request_map(force I) fehlgeschlagen: ' + (e && e.message));
     }
 
-    // Frische Karte als Merger-Basis setzen (ersetzt alte Basis; P-Frames sammeln sich darauf).
+    // Frische Karte in den Merger geben. KEIN reset(): die HA-Sequenzregeln im Merger
+    // entscheiden selbst (aelterer I-Frame per timestamp wird uebersprungen — so kann
+    // die veraltete gespeicherte Karte eine frischere Live-Basis nicht ueberschreiben).
     let freshBaseSet = false;
     if (freshBase64) {
       try {
         if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
-        this.mapMerger.reset();
         this._diagFrame('getMap-Fresh', freshBase64);
         const base = this.mapMerger.process(freshBase64);
         if (base) {
