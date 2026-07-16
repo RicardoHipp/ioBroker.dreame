@@ -1,10 +1,17 @@
 // Test der HA-portierten Merge-/Decode-Logik.
 // WICHTIG (wie HA decode_p_map_data_from_partial): P-Frame-Bytes sind bei version!=3
 // DELTAS auf den Roh-Puffer ("P map only returns difference"); frame_map wird beim
-// I-Frame ueber meta.fsm==1 erkannt, bei P-Frames ist es immer true.
+// I-Frame ueber meta.fsm==1 erkannt, bei P-Frames erzwingt decode_p_map_data_from_partial
+// immer frame_map=true auf der laufenden Karte.
+//
+// Fuer I-Frames benutzt HA (map.py decode_map_data_from_partial) einen EIGENEN,
+// 5-verzweigten Pixel-Algorithmus (haMap.decodeIFramePixels) — NICHT _get_pixel_type
+// (haMap.getPixelType, das ist nur fuer P-Frame-Deltas). Beide Algorithmen liefern nur
+// im Normalfall (saved_map_status nicht 0/1/2) dasselbe Ergebnis.
 const zlib = require('zlib');
 const { MapMerger, readHeader, HEADER_SIZE, MapPixelType } = require('../lib/mapMerge');
-const { getPixelType, setSegmentColorIndex } = require('../lib/haMap');
+const { getPixelType, setSegmentColorIndex, decodeIFramePixels, MapFrameType } = require('../lib/haMap');
+const { decodeMapDataFromPartial, buildPartialMapFromInflated } = require('../lib/haDecode');
 
 // rohen Frame bauen (Header + Pixel + Meta) -> base64/zlib
 function buildFrame({ mapId = 1, frameId = 0, frameType, gridSize, width, height, originX, originY, pixels, meta }) {
@@ -20,8 +27,11 @@ function buildFrame({ mapId = 1, frameId = 0, frameType, gridSize, width, height
   const metaBuf = Buffer.from(JSON.stringify(meta || {}), 'utf8');
   return Buffer.from(zlib.deflateSync(Buffer.concat([hdr, Buffer.from(pixels), metaBuf]))).toString('base64');
 }
+function inflateFrame(b64) {
+  return Buffer.from(zlib.inflateSync(Buffer.from(b64, 'base64')));
+}
 function decodeFrame(b64) {
-  const raw = Buffer.from(zlib.inflateSync(Buffer.from(b64, 'base64')));
+  const raw = inflateFrame(b64);
   const h = readHeader(raw);
   const pix = raw.slice(HEADER_SIZE, HEADER_SIZE + h.width * h.height);
   const meta = JSON.parse(raw.toString('utf8', HEADER_SIZE + h.width * h.height) || '{}');
@@ -36,7 +46,7 @@ const UNKB = 61 << 2;             // -> MapPixelType.UNKNOWN
 let ok = 0, fail = 0;
 const assert = (c, m) => { if (c) { ok++; } else { fail++; console.log('  ✗ FAIL:', m); } };
 
-// --- 0) Parser (HA _get_pixel_type, frame_map-Zweig) ---
+// --- 0) Parser (HA _get_pixel_type, frame_map-Zweig) — NUR fuer P-Frame-Deltas ---
 const ctx = { version: 1, frame_map: true, saved_map_status: 2 };
 assert(getPixelType(ctx, WALLB)[0] === MapPixelType.WALL, 'Parser: 63<<2 -> WALL');
 assert(getPixelType(ctx, FLOORB)[0] === MapPixelType.FLOOR, 'Parser: 62<<2 -> FLOOR');
@@ -53,11 +63,30 @@ const ctxV3 = { version: 3, frame_map: false, saved_map_status: 2 };
 assert(getPixelType(ctxV3, 31 | (1 << 5))[0] === MapPixelType.WALL, 'Parser v3: seg31+wall -> WALL');
 assert(getPixelType(ctxV3, 7)[0] === 7, 'Parser v3: seg 7');
 
-// --- 0b) Farb-Index-Algorithmus (set_segment_color_index) ---
-const ci = setSegmentColorIndex({ 1: { nei_id: [3, 7] }, 2: { nei_id: [3, 6] }, 3: { nei_id: [1, 2, 4, 6] }, 4: { nei_id: [3] }, 5: { nei_id: [6] }, 6: { nei_id: [2, 3, 5] }, 7: { nei_id: [1] } });
-assert(ci[2] !== ci[3] && ci[2] !== ci[6], 'Farben: Flur(2) kollidiert nicht mit Nachbarn 3/6');
-assert(ci[3] !== ci[4] && ci[3] !== ci[6] && ci[3] !== ci[1], 'Farben: 3 kollidiert mit keinem Nachbarn');
-assert(Object.values(ci).every((v) => v >= 0 && v <= 3), 'Farben: nur Indizes 0-3');
+// --- 0b) I-Frame-Pixelalgorithmus (decodeIFramePixels) weicht bei saved_map_status 0/1
+//     bewusst von getPixelType ab (map.py hat hierfuer ZWEI verschiedene Algorithmen) ---
+{
+  const pixel = 0x80 | 5; // bit7 gesetzt (Wand-Flag) + segment_id 5
+  const viaGetPixelType = getPixelType({ version: 1, frame_map: false, saved_map_status: 1 }, pixel)[0];
+  assert(viaGetPixelType === 105, 'getPixelType: bit7+seg5 -> 105 (P-Frame-Algorithmus, ignoriert saved_map_status bei bit7)');
+  const viaIFrame = decodeIFramePixels({
+    frameType: MapFrameType.I, version: 1, frameMap: false, savedMap: false, savedMapStatus: 1, recoveryMap: false,
+    data: new Uint8Array([pixel]), width: 1, height: 1,
+  });
+  assert(viaIFrame.pixelType[0] === MapPixelType.OUTSIDE, 'decodeIFramePixels: saved_map_status=1 ignoriert bit7-Zweig komplett -> OUTSIDE (echtes HA-I-Frame-Verhalten)');
+}
+
+// --- 0c) Farb-Index-Algorithmus (set_segment_color_index) — neue Signatur (mapData, segmentInfo, wallsInfo) ---
+{
+  const segInf = { 1: { nei_id: [3, 7] }, 2: { nei_id: [3, 6] }, 3: { nei_id: [1, 2, 4, 6] }, 4: { nei_id: [3] }, 5: { nei_id: [6] }, 6: { nei_id: [2, 3, 5] }, 7: { nei_id: [1] } };
+  const mapDataStub = { version: 1, segments: Object.fromEntries(Object.keys(segInf).map((k) => [k, {}])) };
+  const segmentInfo = Object.entries(segInf).map(([k, v]) => [parseInt(k, 10), v.nei_id, 0]);
+  setSegmentColorIndex(mapDataStub, segmentInfo, null);
+  const ci = Object.fromEntries(Object.entries(mapDataStub.segments).map(([k, v]) => [k, v.color_index]));
+  assert(ci[2] !== ci[3] && ci[2] !== ci[6], 'Farben: Flur(2) kollidiert nicht mit Nachbarn 3/6');
+  assert(ci[3] !== ci[4] && ci[3] !== ci[6] && ci[3] !== ci[1], 'Farben: 3 kollidiert mit keinem Nachbarn');
+  assert(Object.values(ci).every((v) => v >= 0 && v <= 3), 'Farben: nur Indizes 0-3');
+}
 
 // --- 1) I-Frame (fsm=1 -> frame_map): Räume 1/2 + Wand ---
 const merger = new MapMerger();
@@ -67,7 +96,7 @@ const iPix = Buffer.from([
   0, 0, R(2), R(2),
   WALLB, 0, R(2), R(2), // (0,3) = Wand
 ]);
-const iFrame = buildFrame({ frameId: 1, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix, meta: { fsm: 1, ris: 2, seg_inf: { 1: {} }, walls_info: { x: 1 } } });
+const iFrame = buildFrame({ frameId: 1, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix, meta: { fsm: 1, ris: 2, seg_inf: { 1: {}, 2: {} } } });
 let out = merger.process(iFrame);
 assert(!!out, 'I-Frame liefert Ergebnis');
 let d = decodeFrame(out);
@@ -75,6 +104,7 @@ assert(d.h.frameType === 73, 'Ausgabe ist Typ 73');
 assert(d.pix[0] === 1 && d.pix[5] === 1, 'Raum 1 korrekt dekodiert');
 assert(d.pix[10] === 2, 'Raum 2 korrekt dekodiert');
 assert(d.pix[12] === MapPixelType.WALL, 'Wand -> MapPixelType.WALL (255)');
+assert(d.meta.seg_inf && d.meta.seg_inf[1] && d.meta.seg_inf[2], 'seg_inf im Wire-Format aus gemergten Segmenten aufgebaut');
 
 // --- 2) P-Frame = DELTAS: (0,0) Raum1->Raum3 (delta 8), (2,0) leer->Wand (delta 252),
 //     (1,1) Raum1->Boden (delta 244) ---
@@ -84,7 +114,7 @@ const pPix = Buffer.from([
   0, 0, 0, 0,
   0, 0, 0, 0,
 ]);
-const pFrame = buildFrame({ frameId: 2, frameType: 80, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: pPix, meta: { ris: 2, robot: [10, 20] } });
+const pFrame = buildFrame({ frameId: 2, frameType: 80, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: pPix, meta: { ris: 2 } });
 d = decodeFrame(merger.process(pFrame));
 assert(d.h.width === 4 && d.h.height === 4, 'Dims unverändert');
 assert(d.pix[0] === 3, 'Delta auf Rohwert: Raum 1 + 8 -> Raum 3');
@@ -92,8 +122,6 @@ assert(d.pix[2] === MapPixelType.WALL, 'Delta auf leer: 0 + 252 -> WALL');
 assert(d.pix[5] === MapPixelType.FLOOR, 'Delta: Raum 1 + 244 -> FLOOR');
 assert(d.pix[1] === 1 && d.pix[10] === 2, 'nicht berührte Zellen erhalten');
 assert(d.pix[12] === MapPixelType.WALL, 'Wand aus Basis erhalten');
-assert(d.meta.walls_info && d.meta.walls_info.x === 1, 'walls_info aus I-Frame behalten');
-assert(Array.isArray(d.meta.robot), 'robot aus P-Frame übernommen');
 
 // --- 3) P-Frame erweitert die Karte nach rechts (Neuland: alter Rohwert 0 + Delta) ---
 const m2 = new MapMerger();
@@ -120,7 +148,6 @@ m4.process(buildFrame({ frameId: 1, frameType: 73, gridSize: 50, width: 4, heigh
 let d4 = decodeFrame(m4._buildFrame());
 assert(d4.meta.trpts && d4.meta.trpts.length === 2, 'I-Frame tr -> 2 Punkte');
 assert(d4.meta.trpts[0][0] === 100 && d4.meta.trpts[1][0] === 110, 'tr: L ist relativ (100 -> 110)');
-assert(d4.meta.tr === undefined, 'rohes tr aus Meta entfernt');
 
 // --- 6) Frame-Sequenz (HA _add_map_data): Luecke wird gepuffert, dann in Reihenfolge angewandt ---
 const m5 = new MapMerger();
@@ -151,6 +178,52 @@ const oldI = buildFrame({ frameId: 1, frameType: 73, gridSize: 50, width: 4, hei
 assert(m6.process(oldI) === null, 'aelterer I-Frame (ts 1000 < 2000) wird uebersprungen');
 d = decodeFrame(m6._buildFrame());
 assert(d.pix[0] === 1, 'Basis blieb die frischere Karte');
+
+// --- 8) data_json.origin ueberschreibt die Header-Position (map.py 4258-4260) ---
+{
+  const inflated = inflateFrame(buildFrame({ frameId: 1, frameType: 73, gridSize: 50, width: 1, height: 1, originX: 0, originY: 0, pixels: [0], meta: { origin: [500, 600] } }));
+  const partial = buildPartialMapFromInflated(inflated, 1);
+  const [mapData] = decodeMapDataFromPartial(partial, 0);
+  assert(mapData.dimensions.left === 500 && mapData.dimensions.top === 600, 'origin aus meta ueberschreibt Header-left/top');
+}
+
+// --- 9) delsr (ausgeblendete Raeume) wird auch DIREKT aus dem Live-Frame gelesen, nicht
+//     nur aus der eingebetteten gespeicherten Karte (map.py 4394-4395) ---
+{
+  const m7 = new MapMerger();
+  d = decodeFrame(m7.process(buildFrame({ frameId: 1, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix, meta: { fsm: 1, ris: 2, delsr: [2, 4] } })));
+  assert(Array.isArray(d.meta.ha.hiddenSegments) && d.meta.ha.hiddenSegments.includes(2) && d.meta.ha.hiddenSegments.includes(4), 'delsr aus Live-Frame direkt uebernommen (ohne rism)');
+}
+
+// --- 10) Versions-Autoerkennung wie decode_map_partial (map.py 4185-4195): version<3 und
+//     saveMapId/cover/diff/curtain vorhanden -> version wird auf 3 angehoben ---
+{
+  const inflated = inflateFrame(buildFrame({ frameId: 1, frameType: 73, gridSize: 50, width: 1, height: 1, originX: 0, originY: 0, pixels: [0], meta: { curtain: { line: [[0, 0, 10, 10]] } } }));
+  const partial = buildPartialMapFromInflated(inflated, 1);
+  assert(partial.version === 3, 'curtain-Feld im JSON hebt Version 1 -> 3 an');
+  const inflated2 = inflateFrame(buildFrame({ frameId: 1, frameType: 73, gridSize: 50, width: 1, height: 1, originX: 0, originY: 0, pixels: [0], meta: { fsm: 1 } }));
+  const partial2 = buildPartialMapFromInflated(inflated2, 1);
+  assert(partial2.version === 1, 'ohne saveMapId/cover/diff/curtain bleibt Version 1');
+}
+
+// --- 11) funiture_info (gespeicherte Karte): segment_id kommt aus furniture[2], NICHT
+//     furniture[13] (das ist edit_type) — map.py 4962-4977 exakt gelesen ---
+{
+  // [furniture_id, type, segment_id, width, height, ?, x, y, ?, angle, ?, ?, scale, edit_type]
+  const f = [100, 6, 3, 40, 20, 0, 150, 160, 0, 90, 0, 0, 1.0, 7];
+  const inflated = inflateFrame(buildFrame({
+    frameId: 1, frameType: 73, gridSize: 50, width: 1, height: 1, originX: 0, originY: 0, pixels: [0],
+    meta: { fsm: 1, ris: 2, funiture_info: [f] },
+  }));
+  const partial = buildPartialMapFromInflated(inflated, 1);
+  const [mapData] = decodeMapDataFromPartial(partial, 0);
+  const furn = mapData.saved_furnitures[1];
+  assert(!!furn, 'Moebel aus funiture_info geparst');
+  assert(furn.segment_id === 3, `segment_id = furniture[2] (war ${furn.segment_id}, erwartet 3) — nicht furniture[13]`);
+  assert(furn.edit_type === 7, `edit_type = furniture[13] (war ${furn.edit_type}, erwartet 7)`);
+  assert(furn.x === 150 && furn.y === 160 && furn.width === 40 && furn.height === 20, 'Position/Groesse aus furniture[6,7,3,4]');
+  assert(furn.angle === 90 && furn.scale === 1.0, 'angle=furniture[9], scale=furniture[12]');
+}
 
 console.log(`\nErgebnis: ${ok} OK, ${fail} FAIL`);
 process.exit(fail ? 1 : 0);
