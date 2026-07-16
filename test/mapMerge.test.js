@@ -225,5 +225,40 @@ assert(d.pix[0] === 1, 'Basis blieb die frischere Karte');
   assert(furn.angle === 90 && furn.scale === 1.0, 'angle=furniture[9], scale=furniture[12]');
 }
 
+// --- 12) active_segments ("sa") + zone_cleaning gehen ins Wire-Format (HA faerbt damit
+//     alle Raeume ausserhalb des laufenden Auftrags mit passive_segment, map.py 9164) ---
+{
+  const m8 = new MapMerger();
+  // sa-Format wie map.py 4392: [[segment_id, ...], ...] -> active_segments = [sa[0], ...]
+  d = decodeFrame(m8.process(buildFrame({
+    frameId: 1, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix,
+    meta: { fsm: 1, ris: 2, seg_inf: { 1: {}, 2: {} }, sa: [[2, 1, 0, 0]] },
+  })));
+  assert(Array.isArray(d.meta.ha.activeSegments) && d.meta.ha.activeSegments.length === 1 && d.meta.ha.activeSegments[0] === 2,
+    `activeSegments aus sa[][0] im Wire-Format (war ${JSON.stringify(d.meta.ha.activeSegments)})`);
+  assert(d.meta.ha.zoneCleaning === false, 'zoneCleaning=false bei reiner Segment-Reinigung');
+
+  // zone_cleaning: HA setzt es, sobald active_areas (da2) oder active_points (sp) vorliegen
+  const m9 = new MapMerger();
+  d = decodeFrame(m9.process(buildFrame({
+    frameId: 1, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix,
+    meta: { fsm: 1, ris: 2, seg_inf: { 1: {} }, da2: { areas: [[0, 0, 100, 100]] } },
+  })));
+  assert(d.meta.ha.zoneCleaning === true, 'zoneCleaning=true bei Zonenreinigung (da2.areas)');
+
+  const m10 = new MapMerger();
+  d = decodeFrame(m10.process(buildFrame({
+    frameId: 1, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix,
+    meta: { fsm: 1, ris: 2, seg_inf: { 1: {} }, sp: [[50, 60]] },
+  })));
+  assert(d.meta.ha.zoneCleaning === true, 'zoneCleaning=true bei Punktreinigung (sp)');
+
+  // ohne laufenden Auftrag: null/false -> Widget faellt auf die Klick-Auswahl-Faerbung zurueck
+  const m11 = new MapMerger();
+  d = decodeFrame(m11.process(iFrame));
+  assert(!d.meta.ha.activeSegments, 'ohne sa: activeSegments null -> keine Ausgrauung');
+  assert(d.meta.ha.zoneCleaning === false, 'ohne da2/sp: zoneCleaning false');
+}
+
 console.log(`\nErgebnis: ${ok} OK, ${fail} FAIL`);
 process.exit(fail ? 1 : 0);
