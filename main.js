@@ -3361,6 +3361,30 @@ class Dreame extends utils.Adapter {
                   if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
                   const merged = this.mapMerger.process(encode);
                   if (merged) await this._writeMerged(did, merged);
+                  // Kleine Frame-Luecke: fehlenden P-Frame GEZIELT nachfordern
+                  // (HA _request_missing_p_map: {"map_id","req_type":1,"frame_id","frame_type":"P"},
+                  //  max. 1x/3s je map/frame)
+                  if (this.mapMerger.requestPFrame) {
+                    const rq = this.mapMerger.requestPFrame;
+                    this.mapMerger.requestPFrame = null;
+                    const rqKey = `${rq.mapId}:${rq.frameId}`;
+                    const nowP = Date.now();
+                    if (this._lastPReqKey !== rqKey || !this._lastPReqTime || nowP - this._lastPReqTime > 3000) {
+                      this._lastPReqKey = rqKey;
+                      this._lastPReqTime = nowP;
+                      this.log.debug(`[MERGE] fordere fehlenden P-Frame an: map=${rq.mapId} frame=${rq.frameId}`);
+                      this.sendCommand({
+                        did: did,
+                        method: 'action',
+                        params: {
+                          did: did,
+                          siid: 6,
+                          aiid: 1,
+                          in: [{ piid: 2, value: JSON.stringify({ map_id: rq.mapId, req_type: 1, frame_id: rq.frameId, frame_type: 'P' }) }],
+                        },
+                      }).catch((e) => this.log.debug('[MERGE] P-Frame-Anforderung fehlgeschlagen: ' + (e && e.message)));
+                    }
+                  }
                   // Wie HA: bei fehlender Basis, Map-ID-Wechsel oder grosser Frame-Luecke
                   // fordert der Merger eine frische Komplett-Karte an (throttled 60s).
                   if (this.mapMerger.needMapRequest) {
@@ -4012,10 +4036,28 @@ class Dreame extends utils.Adapter {
       });
       const res = rm && (rm.result !== undefined ? rm.result : rm);
       const out = res && res.out;
+      // Antwort wie HA _request_i_map auswerten: piid 3 = object_name, piid 1 = Karte
+      // DIREKT als Rohdaten (kommt v.a. WAEHREND der Reinigung statt object_name!),
+      // piid 13 = old_map_data ("0,<raw>" oder "<x>,<object_name>[,<aes-key>]").
       let freshObj = null;
+      let freshRaw = null;
       if (Array.isArray(out)) {
         for (const p of out) {
-          if (p.piid === 3 && p.value) freshObj = p.value; // object_name der frischen Karte
+          if (p.value === undefined || p.value === null || p.value === '') continue;
+          if (p.piid === 3) freshObj = p.value;
+          else if (p.piid === 1) freshRaw = p.value;
+          else if (p.piid === 13) {
+            const values = String(p.value).split(',');
+            if (values[0] === '0') {
+              if (!freshRaw) freshRaw = values[1];
+            } else if (!freshObj) {
+              if (values.length === 3) {
+                this.log.warn('[MAP] Karten-Objekt mit AES-Key erhalten — Entschluesselung nicht implementiert');
+              } else {
+                freshObj = values[1];
+              }
+            }
+          }
         }
       }
       if (freshObj) {
@@ -4053,8 +4095,12 @@ class Dreame extends utils.Adapter {
             this.log.warn('[MAP] frisches Objekt: kein zlib-Frame erkannt (' + typeof data + ')');
           }
         }
+      } else if (freshRaw) {
+        // Karte kam DIREKT in der Aktions-Antwort (base64-zlib-Frame) — wie HA raw_map_data
+        freshBase64 = String(freshRaw);
+        this.log.info(`[MAP] frische Karte direkt aus Antwort erhalten (${freshBase64.length} Zeichen)`);
       } else {
-        this.log.debug('[MAP] force-I lieferte kein object_name (evtl. Reinigung aktiv) -> Fallback');
+        this.log.debug('[MAP] force-I lieferte weder object_name noch Rohdaten -> Fallback');
       }
     } catch (e) {
       this.log.warn('[MAP] request_map(force I) fehlgeschlagen: ' + (e && e.message));

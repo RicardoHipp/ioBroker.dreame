@@ -128,6 +128,8 @@ m5.process(iFrame); // frame 1
 // frame 3 kommt VOR frame 2 -> darf nicht angewandt werden (Puffer)
 let r = m5.process(buildFrame({ frameId: 3, frameType: 80, gridSize: 50, width: 1, height: 1, originX: 0, originY: 0, pixels: Buffer.from([R(6) - R(2)]), meta: { ris: 2 } }));
 assert(r === null, 'Sequenz: Frame 3 vor Frame 2 -> gepuffert, nichts ausgegeben');
+assert(m5.requestPFrame && m5.requestPFrame.frameId === 2, 'kleine Luecke -> gezielte P-Frame-Nachforderung (frame 2)');
+m5.requestPFrame = null;
 // frame 2 kommt nach -> beide werden in Reihenfolge angewandt (1 -> 2 -> 6)
 d = decodeFrame(m5.process(buildFrame({ frameId: 2, frameType: 80, gridSize: 50, width: 1, height: 1, originX: 0, originY: 0, pixels: Buffer.from([R(2) - R(1)]), meta: { ris: 2 } })));
 assert(d.pix[0] === 6, 'Sequenz: Luecke geschlossen -> beide Deltas in Reihenfolge (1->2->6)');
@@ -137,6 +139,10 @@ assert(m5.process(buildFrame({ frameId: 2, frameType: 80, gridSize: 50, width: 1
 assert(m5.needMapRequest === false, 'Sequenz: needMapRequest anfangs false');
 m5.process(buildFrame({ mapId: 9, frameId: 4, frameType: 80, gridSize: 50, width: 1, height: 1, originX: 0, originY: 0, pixels: Buffer.from([R(1)]), meta: { ris: 2 } }));
 assert(m5.needMapRequest === true, 'Sequenz: Map-ID-Wechsel -> needMapRequest');
+assert(m5.pQueue.size === 1 && m5.currentFrameId === null, 'Map-ID-Wechsel: Frame gepuffert, Sequenz genullt');
+// Neue I-Basis der neuen Session (map 9, frame 3) -> gepufferter Frame 4 (delta R(1)) wird angewandt
+d = decodeFrame(m5.process(buildFrame({ mapId: 9, frameId: 3, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix, meta: { fsm: 1, ris: 2, timestamp_ms: 99999 } })));
+assert(d.pix[0] === 2, 'nach Map-Wechsel: neue Basis + gepuffertes Delta angewandt (Raum 1 -> 2)');
 
 // --- 7) Aelterer I-Frame (timestamp) ueberschreibt frischere Basis NICHT ---
 const m6 = new MapMerger();
