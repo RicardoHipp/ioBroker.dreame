@@ -3382,7 +3382,30 @@ class Dreame extends utils.Adapter {
                           aiid: 1,
                           in: [{ piid: 2, value: JSON.stringify({ map_id: rq.mapId, req_type: 1, frame_id: rq.frameId, frame_type: 'P' }) }],
                         },
-                      }).catch((e) => this.log.debug('[MERGE] P-Frame-Anforderung fehlgeschlagen: ' + (e && e.message)));
+                      })
+                        .then(async (rm) => {
+                          // Antwort wie HA _request_next_p_map auswerten: der fehlende Frame
+                          // kommt als piid 1 (Rohdaten) oder piid 3 (object_name) ZURUECK.
+                          const res = rm && (rm.result !== undefined ? rm.result : rm);
+                          if (!res || res.code !== 0 || !Array.isArray(res.out)) return;
+                          let objName = null;
+                          let rawMap = null;
+                          for (const p of res.out) {
+                            if (p.value === undefined || p.value === null || p.value === '') continue;
+                            if (p.piid === 3) objName = p.value;
+                            else if (p.piid === 1) rawMap = p.value;
+                          }
+                          if (!rawMap && objName) {
+                            const mDev = this.deviceArray.find((dv) => String(dv.did) === String(did));
+                            if (mDev) rawMap = await this._downloadMapB64(objName, mDev);
+                          }
+                          if (rawMap) {
+                            this.log.debug(`[MERGE] fehlender P-Frame erhalten: map=${rq.mapId} frame=${rq.frameId}`);
+                            const merged2 = this.mapMerger.process(String(rawMap));
+                            if (merged2) await this._writeMerged(did, merged2);
+                          }
+                        })
+                        .catch((e) => this.log.debug('[MERGE] P-Frame-Anforderung fehlgeschlagen: ' + (e && e.message)));
                     }
                   }
                   // Wie HA: bei fehlender Basis, Map-ID-Wechsel oder grosser Frame-Luecke
@@ -3802,6 +3825,37 @@ class Dreame extends utils.Adapter {
     } catch (e) {
       this.log.debug(`[FRAME-DIAG] ${tag}: Fehler ${e.message}`);
     }
+  }
+
+  /**
+   * Laedt ein Karten-Objekt aus der Cloud und liefert es als base64-zlib-Frame-String
+   * (robuste Byte-Erkennung: base64-Text / Rohbytes / Byte-Objekt). null bei Fehler.
+   */
+  async _downloadMapB64(objName, device) {
+    try {
+      const url = await this.getFile(objName, device);
+      const resp = await this.requestClient({ method: 'get', url }).catch(() => null);
+      if (!resp || !resp.data) return null;
+      const data = resp.data;
+      let buf = null;
+      if (Buffer.isBuffer(data)) buf = data;
+      else if (data instanceof ArrayBuffer) buf = Buffer.from(data);
+      else if (typeof data === 'string') {
+        const b1 = Buffer.from(data, 'base64');
+        if (b1.length > 2 && b1[0] === 0x78) buf = b1;
+        else {
+          const b2 = Buffer.from(data, 'latin1');
+          if (b2[0] === 0x78) buf = b2;
+        }
+      } else if (data && typeof data === 'object') {
+        const ks = Object.keys(data).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
+        if (ks.length) buf = Buffer.from(ks.map((k) => data[k]));
+      }
+      if (buf && buf.length && buf[0] === 0x78) return buf.toString('base64');
+    } catch (e) {
+      this.log.debug('[MAP] _downloadMapB64: ' + (e && e.message));
+    }
+    return null;
   }
 
   /** Schreibt die gemergte Karte als CloudData-Blob (Format wie dreamehome) in einen State. */
