@@ -3386,6 +3386,7 @@ class Dreame extends utils.Adapter {
                     const lidarNavigation = !(this.specPropsToIdDict[did] && this.specPropsToIdDict[did]['13-1']);
                     const objectShift = lidarNavigation && String((capDev && capDev.model) || '').includes('p20');
                     this.mapMerger.setCapability({ lidarNavigation, objectShift });
+                    this._checkVslamSupport(did, lidarNavigation, capDev && capDev.model);
                   }
                   // Geraetestatus fuer HAs Render-Vorverarbeitung (device.py self.status.*) —
                   // synchron aus dem Eigenschaftsspeicher, nicht aus der State-Datenbank.
@@ -3890,6 +3891,26 @@ class Dreame extends utils.Adapter {
   }
 
   /**
+   * VSLAM-Geraete (Kamera-Navigation, z.B. Mijia 1C/1T, Dreame F9): die Kartendarstellung
+   * dieses Forks ist NUR fuer Lidar-Roboter gebaut und getestet. Fuer VSLAM fehlen bewusst
+   * (siehe PORT_STATUS.md, "VSLAM zurueckgestellt"): map_version-0-Auswahl, der
+   * Karten-Optimizer (map.py 12503 ff.), die Docked-Ersatzkarte (device.py 3035-3056),
+   * der Skalierungsfix (device.py 3274-3282) und die VSLAM-Icons. Ohne Testgeraet wird
+   * das nicht blind portiert — erst wenn sich echte Nutzer melden.
+   */
+  _checkVslamSupport(did, lidarNavigation, model) {
+    if (lidarNavigation) return;
+    if (!this._vslamErrorShown) this._vslamErrorShown = {};
+    if (this._vslamErrorShown[did]) return;
+    this._vslamErrorShown[did] = true;
+    this.log.error(
+      `VSLAM-Geraet erkannt (${model || 'unbekanntes Modell'}): Kamera-/VSLAM-Roboter werden von der ` +
+        `Kartendarstellung dieses Adapters nicht unterstuetzt (nicht eingebaut, ungetestet). ` +
+        `Bei Interesse bitte ein Issue eroeffnen: https://github.com/RicardoHipp/ioBroker.dreame/issues`,
+    );
+  }
+
+  /**
    * Eigenschaftsspeicher — Gegenstueck zu HAs `self._properties` im Geraeteobjekt.
    * TA2ks Adapter schreibt MQTT-Werte direkt in States und haelt sie nirgends; HA braucht
    * sie aber synchron und mit Vorgaengerwert, weil mehrere Entscheidungen genau daran
@@ -4308,6 +4329,7 @@ class Dreame extends utils.Adapter {
           const lidarNavigation = !(this.specPropsToIdDict[device.did] && this.specPropsToIdDict[device.did]['13-1']);
           const objectShift = lidarNavigation && String(device.model || '').includes('p20');
           this.mapMerger.setCapability({ lidarNavigation, objectShift });
+          this._checkVslamSupport(device.did, lidarNavigation, device.model);
         }
         this._diagFrame('getMap-Fresh', freshBase64);
         const base = this.mapMerger.process(freshBase64);
