@@ -3375,7 +3375,18 @@ class Dreame extends utils.Adapter {
               if (this.mergePFrames) {
                 this._diagFrame('MQTT-6-1', encode);
                 try {
-                  if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
+                  if (!this.mapMerger) {
+                    this.mapMerger = new MapMerger({ log: this.log });
+                    // Geraete-Faehigkeiten wie HA (types.py):
+                    //   3105: lidar_navigation = get_property(MAP_SAVING) is None
+                    //         MAP_SAVING = siid 13 / piid 1 (types.py 1714) -> bei uns:
+                    //         Eigenschaft existiert nicht in der Geraete-Spec.
+                    //   3243: object_shift = lidar_navigation and "p20" in model
+                    const capDev = this.deviceArray.find((d) => String(d.did) === String(did));
+                    const lidarNavigation = !(this.specPropsToIdDict[did] && this.specPropsToIdDict[did]['13-1']);
+                    const objectShift = lidarNavigation && String((capDev && capDev.model) || '').includes('p20');
+                    this.mapMerger.setCapability({ lidarNavigation, objectShift });
+                  }
                   // Geraetestatus fuer HAs Render-Vorverarbeitung (device.py self.status.*) —
                   // synchron aus dem Eigenschaftsspeicher, nicht aus der State-Datenbank.
                   this.mapMerger.setDeviceStatus(this._deviceStatus(did));
@@ -4291,7 +4302,13 @@ class Dreame extends utils.Adapter {
     let freshBaseSet = false;
     if (freshBase64) {
       try {
-        if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
+        if (!this.mapMerger) {
+          this.mapMerger = new MapMerger({ log: this.log });
+          // Geraete-Faehigkeiten wie HA (types.py 3105 + 3243) — s. MQTT-Pfad.
+          const lidarNavigation = !(this.specPropsToIdDict[device.did] && this.specPropsToIdDict[device.did]['13-1']);
+          const objectShift = lidarNavigation && String(device.model || '').includes('p20');
+          this.mapMerger.setCapability({ lidarNavigation, objectShift });
+        }
         this._diagFrame('getMap-Fresh', freshBase64);
         const base = this.mapMerger.process(freshBase64);
         if (base) {

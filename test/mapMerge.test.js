@@ -367,5 +367,55 @@ assert(d.pix[0] === 1, 'Basis blieb die frischere Karte');
   assert(new MapMerger().refresh() === null, 'refresh() ohne Karte liefert null');
 }
 
+// --- 13) Ursprungs-Verschiebung im Wire-Header (device.py 3071-3085 _render_map) ---
+// HA verschiebt fuer Lidar-Roboter den Karten-Ursprung der Render-Kopie:
+//   object_shift (nur "p20"): ganze Zelle, drehungsabhaengig
+//   sonst:                    halbe Zelle (dimensions.offset), beide Achsen
+// Die gespeicherten Kartendaten (this.current) bleiben unveraendert.
+{
+  const frameO = () => buildFrame({
+    frameId: 1, frameType: 73, gridSize: 50, width: 4, height: 4, originX: -1150, originY: -4550,
+    pixels: iPix, meta: { fsm: 1, ris: 2, seg_inf: { 1: {}, 2: {} } },
+  });
+
+  // Standard (Capability-Defaults wie HA: lidar_navigation=True, object_shift=False)
+  const mo = new MapMerger();
+  let dOut = decodeFrame(mo.process(frameO()));
+  assert(dOut.h.originX === -1175 && dOut.h.originY === -4575,
+    `Lidar: Header-Ursprung um halbe Zelle verschoben (-1175/-4575, war ${dOut.h.originX}/${dOut.h.originY})`);
+  assert(mo.current.dimensions.left === -1150 && mo.current.dimensions.top === -4550,
+    'Lidar: gespeicherte Kartendaten bleiben unveraendert (nur die Render-Kopie verschiebt)');
+  assert(mo.current.dimensions.original_left === -1150 && mo.current.dimensions.original_top === -4550,
+    'original_left/top tragen den unveraenderten Anker');
+
+  // refresh() (Neuzeichnen ohne neuen Frame) verschiebt identisch — nicht doppelt
+  dOut = decodeFrame(mo.refresh());
+  assert(dOut.h.originX === -1175 && dOut.h.originY === -4575, 'refresh(): gleiche Verschiebung, keine Doppel-Verschiebung');
+
+  // object_shift ("p20"-Modelle): ganze Zelle, bei rotation 0 beide Achsen
+  const mp = new MapMerger();
+  mp.setCapability({ lidarNavigation: true, objectShift: true });
+  dOut = decodeFrame(mp.process(frameO()));
+  assert(dOut.h.originX === -1200 && dOut.h.originY === -4600,
+    `object_shift rot=0: ganze Zelle auf beiden Achsen (-1200/-4600, war ${dOut.h.originX}/${dOut.h.originY})`);
+
+  // object_shift mit rotation 90: nur left; rotation 270: nur top (device.py 3075-3078)
+  const mp90 = new MapMerger();
+  mp90.setCapability({ lidarNavigation: true, objectShift: true });
+  mp90.process(frameO());
+  mp90.current.rotation = 90;
+  dOut = decodeFrame(mp90.refresh());
+  assert(dOut.h.originX === -1200 && dOut.h.originY === -4550, 'object_shift rot=90: nur left verschoben');
+  mp90.current.rotation = 270;
+  dOut = decodeFrame(mp90.refresh());
+  assert(dOut.h.originX === -1150 && dOut.h.originY === -4600, 'object_shift rot=270: nur top verschoben');
+
+  // kein Lidar (VSLAM): keine Verschiebung
+  const mv = new MapMerger();
+  mv.setCapability({ lidarNavigation: false, objectShift: false });
+  dOut = decodeFrame(mv.process(frameO()));
+  assert(dOut.h.originX === -1150 && dOut.h.originY === -4550, 'ohne Lidar: Ursprung unveraendert');
+}
+
 console.log(`\nErgebnis: ${ok} OK, ${fail} FAIL`);
 process.exit(fail ? 1 : 0);
