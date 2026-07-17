@@ -3359,6 +3359,8 @@ class Dreame extends utils.Adapter {
                 this._diagFrame('MQTT-6-1', encode);
                 try {
                   if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
+                  // Geraetestatus fuer HAs Render-Vorverarbeitung (device.py self.status.*).
+                  this.mapMerger.setDeviceStatus(await this._readDeviceStatus(did));
                   const merged = this.mapMerger.process(encode);
                   if (merged) await this._writeMerged(did, merged);
                   // Kleine Frame-Luecke: fehlenden P-Frame GEZIELT nachfordern
@@ -3856,6 +3858,29 @@ class Dreame extends utils.Adapter {
       this.log.debug('[MAP] _downloadMapB64: ' + (e && e.message));
     }
     return null;
+  }
+
+  /**
+   * Liest den Live-Geraetestatus fuer HAs Render-Vorverarbeitung (device.py nutzt dort
+   * self.status.task_status / status / cleaning_paused). Die Werte kommen ueber die
+   * Property-States herein, nicht ueber die Kartenframes.
+   */
+  async _readDeviceStatus(did) {
+    const num = async (id) => {
+      const st = await this.getStateAsync(`${did}.status.${id}`);
+      return st && st.val != null ? Number(st.val) : null;
+    };
+    try {
+      const [taskStatus, status, cleaningPaused] = await Promise.all([
+        num('task-status'),
+        num('status'),
+        num('cleaning-paused'),
+      ]);
+      return { taskStatus, status, cleaningPaused: !!cleaningPaused };
+    } catch (e) {
+      this.log.debug('[MERGE] Geraetestatus lesen: ' + (e && e.message));
+      return null;
+    }
   }
 
   /** Schreibt die gemergte Karte als CloudData-Blob (Format wie dreamehome) in einen State. */

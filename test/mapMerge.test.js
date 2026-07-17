@@ -225,39 +225,95 @@ assert(d.pix[0] === 1, 'Basis blieb die frischere Karte');
   assert(furn.angle === 90 && furn.scale === 1.0, 'angle=furniture[9], scale=furniture[12]');
 }
 
-// --- 12) active_segments ("sa") + zone_cleaning gehen ins Wire-Format (HA faerbt damit
-//     alle Raeume ausserhalb des laufenden Auftrags mit passive_segment, map.py 9164) ---
+// --- 12) Render-Vorverarbeitung aus device.py: active_segments/zone_cleaning haengen am
+//     GERAETESTATUS, nicht bloss am Vorhandensein von sa/da2/sp. HA-Kommentar:
+//     "Map data always contains last active segments" (device.py 3104-3109, 3165-3175, 3219).
+//     Die Frames tragen hier IMMER sa/da2/sp — entscheidend ist allein der Status.
 {
-  const m8 = new MapMerger();
-  // sa-Format wie map.py 4392: [[segment_id, ...], ...] -> active_segments = [sa[0], ...]
-  d = decodeFrame(m8.process(buildFrame({
+  const T = require('../lib/haMap').DreameVacuumTaskStatus;
+  const S = require('../lib/haMap').DreameVacuumStatus;
+  const frameWith = (extra) => buildFrame({
     frameId: 1, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix,
-    meta: { fsm: 1, ris: 2, seg_inf: { 1: {}, 2: {} }, sa: [[2, 1, 0, 0]] },
-  })));
-  assert(Array.isArray(d.meta.ha.activeSegments) && d.meta.ha.activeSegments.length === 1 && d.meta.ha.activeSegments[0] === 2,
-    `activeSegments aus sa[][0] im Wire-Format (war ${JSON.stringify(d.meta.ha.activeSegments)})`);
-  assert(d.meta.ha.zoneCleaning === false, 'zoneCleaning=false bei reiner Segment-Reinigung');
+    meta: Object.assign({ fsm: 1, ris: 2, seg_inf: { 1: {}, 2: {} } }, extra),
+  });
+  const withStatus = (st, extra) => {
+    const mm = new MapMerger();
+    mm.setDeviceStatus(st);
+    return decodeFrame(mm.process(frameWith(extra)));
+  };
 
-  // zone_cleaning: HA setzt es, sobald active_areas (da2) oder active_points (sp) vorliegen
-  const m9 = new MapMerger();
-  d = decodeFrame(m9.process(buildFrame({
-    frameId: 1, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix,
-    meta: { fsm: 1, ris: 2, seg_inf: { 1: {} }, da2: { areas: [[0, 0, 100, 100]] } },
-  })));
-  assert(d.meta.ha.zoneCleaning === true, 'zoneCleaning=true bei Zonenreinigung (da2.areas)');
+  // Raumreinigung laeuft -> Ausgrauung aktiv (device.py 3104-3109 laesst sa stehen)
+  d = withStatus({ taskStatus: T.SEGMENT_CLEANING, status: S.SEGMENT_CLEANING }, { sa: [[2, 1, 0, 0]] });
+  assert(Array.isArray(d.meta.ha.activeSegments) && d.meta.ha.activeSegments[0] === 2,
+    `activeSegments bei laufender Raumreinigung (war ${JSON.stringify(d.meta.ha.activeSegments)})`);
 
-  const m10 = new MapMerger();
-  d = decodeFrame(m10.process(buildFrame({
-    frameId: 1, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix,
-    meta: { fsm: 1, ris: 2, seg_inf: { 1: {} }, sp: [[50, 60]] },
-  })));
-  assert(d.meta.ha.zoneCleaning === true, 'zoneCleaning=true bei Punktreinigung (sp)');
+  // Auftrag beendet, sa steht aber NOCH im Frame -> HA verwirft es. Das ist der Fall, der
+  // die Ausgrauung sonst dauerhaft haengen liesse.
+  d = withStatus({ taskStatus: T.COMPLETED, status: S.SLEEPING }, { sa: [[2, 1, 0, 0]] });
+  assert(d.meta.ha.activeSegments === null,
+    `veraltetes sa nach Auftragsende verworfen (war ${JSON.stringify(d.meta.ha.activeSegments)})`);
 
-  // ohne laufenden Auftrag: null/false -> Widget faellt auf die Klick-Auswahl-Faerbung zurueck
-  const m11 = new MapMerger();
-  d = decodeFrame(m11.process(iFrame));
-  assert(!d.meta.ha.activeSegments, 'ohne sa: activeSegments null -> keine Ausgrauung');
-  assert(d.meta.ha.zoneCleaning === false, 'ohne da2/sp: zoneCleaning false');
+  // Pausierte Raumreinigung zaehlt weiter als laufend (task_status 8/13/17)
+  for (const ts of [T.SEGMENT_CLEANING_PAUSED, T.SEGMENT_MOPPING_PAUSED, T.SEGMENT_DOCKING_PAUSED]) {
+    d = withStatus({ taskStatus: ts, status: S.PAUSED }, { sa: [[2, 1, 0, 0]] });
+    assert(d.meta.ha.activeSegments && d.meta.ha.activeSegments[0] === 2, `activeSegments bei task_status ${ts} (pausiert)`);
+  }
+
+  // zone_cleaning: nur bei tatsaechlich laufender Zonenreinigung (device.py 3219) —
+  // veraltete da2-Zonen im Frame duerfen NICHT alles blau faerben.
+  d = withStatus({ taskStatus: T.ZONE_CLEANING, status: S.ZONE_CLEANING }, { da2: { areas: [[0, 0, 100, 100]] } });
+  assert(d.meta.ha.zoneCleaning === true, 'zoneCleaning=true bei laufender Zonenreinigung');
+  d = withStatus({ taskStatus: T.COMPLETED, status: S.SLEEPING }, { da2: { areas: [[0, 0, 100, 100]] } });
+  assert(d.meta.ha.zoneCleaning === false, 'veraltete da2-Zone nach Auftragsende -> zoneCleaning false');
+
+  // Punktreinigung (device.py 3219, zweiter Zweig)
+  d = withStatus({ taskStatus: T.SPOT_CLEANING, status: S.SPOT_CLEANING }, { sp: [[50, 60]] });
+  assert(d.meta.ha.zoneCleaning === true, 'zoneCleaning=true bei laufender Punktreinigung');
+  d = withStatus({ taskStatus: T.COMPLETED, status: S.SLEEPING }, { sp: [[50, 60]] });
+  assert(d.meta.ha.zoneCleaning === false, 'veraltete sp-Punkte nach Auftragsende -> zoneCleaning false');
+
+  // Raumreinigung faerbt NICHT blau
+  d = withStatus({ taskStatus: T.SEGMENT_CLEANING, status: S.SEGMENT_CLEANING }, { sa: [[2, 1, 0, 0]] });
+  assert(d.meta.ha.zoneCleaning === false, 'zoneCleaning=false bei reiner Raumreinigung');
+}
+
+// --- 13) l2r: "App adds robot position to paths as last line when map data is line to
+//     robot" (device.py 3245-3253). Das Geraet liefert die Spur verzoegert; ohne diesen
+//     Punkt haengt sie sichtbar hinter dem Roboter zurueck. HA macht das auf einer
+//     deepcopy (3022) -> die gespeicherte Spur darf NICHT mitwachsen.
+{
+  const rp = { x: 500, y: 600, a: 90 };
+  const mkFrame = (meta) => {
+    const hdr = Buffer.alloc(HEADER_SIZE, 0);
+    hdr.writeInt16LE(1, 0); hdr.writeInt16LE(0, 2); hdr.writeUInt8(73, 4);
+    hdr.writeInt16LE(rp.x, 5); hdr.writeInt16LE(rp.y, 7); hdr.writeInt16LE(rp.a, 9);
+    hdr.writeInt16LE(32767, 11); hdr.writeInt16LE(32767, 13); hdr.writeInt16LE(32767, 15);
+    hdr.writeInt16LE(50, 17); hdr.writeInt16LE(4, 19); hdr.writeInt16LE(4, 21);
+    hdr.writeInt16LE(0, 23); hdr.writeInt16LE(0, 25);
+    return Buffer.from(zlib.deflateSync(Buffer.concat([hdr, Buffer.from(iPix), Buffer.from(JSON.stringify(meta), 'utf8')]))).toString('base64');
+  };
+  const trMeta = { fsm: 1, ris: 2, seg_inf: { 1: {} }, tr: 'S100,100L10,0L10,0' };
+
+  // ohne l2r: Spur endet beim letzten echten Spurpunkt
+  const mNo = new MapMerger();
+  d = decodeFrame(mNo.process(mkFrame(trMeta)));
+  const last = d.meta.trpts[d.meta.trpts.length - 1];
+  assert(!(last[0] === rp.x && last[1] === rp.y), `ohne l2r endet die Spur NICHT an der Roboterposition (war ${JSON.stringify(last)})`);
+  const lenNo = d.meta.trpts.length;
+
+  // mit l2r: Roboterposition als letzter LINIEN-Punkt angehaengt
+  const mYes = new MapMerger();
+  d = decodeFrame(mYes.process(mkFrame(Object.assign({ l2r: 1 }, trMeta))));
+  const lastY = d.meta.trpts[d.meta.trpts.length - 1];
+  assert(d.meta.trpts.length === lenNo + 1, `mit l2r genau EIN Punkt mehr (war ${d.meta.trpts.length} statt ${lenNo + 1})`);
+  assert(lastY[0] === rp.x && lastY[1] === rp.y, `mit l2r endet die Spur an der Roboterposition (war ${JSON.stringify(lastY)})`);
+  assert(lastY[2] === 0, 'l2r-Punkt ist ein LINIEN-Punkt (kein Spurbruch)');
+
+  // Kopie-Semantik: mehrfaches Bauen darf die gespeicherte Spur NICHT wachsen lassen
+  const a1 = decodeFrame(mYes._buildFrame()).meta.trpts.length;
+  const a2 = decodeFrame(mYes._buildFrame()).meta.trpts.length;
+  assert(a1 === a2 && a1 === lenNo + 1,
+    `l2r-Punkt brennt sich nicht in die gespeicherte Spur ein (${a1} vs ${a2}, erwartet ${lenNo + 1})`);
 }
 
 console.log(`\nErgebnis: ${ok} OK, ${fail} FAIL`);
