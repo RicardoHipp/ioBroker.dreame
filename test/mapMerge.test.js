@@ -316,5 +316,56 @@ assert(d.pix[0] === 1, 'Basis blieb die frischere Karte');
     `l2r-Punkt brennt sich nicht in die gespeicherte Spur ein (${a1} vs ${a2}, erwartet ${lenNo + 1})`);
 }
 
+// --- 14) Editor-Operationen + Auffrischen ohne neuen Frame (device.py 1127-1160,
+//     map.py 1997-2029). Der Fall aus der Praxis: Roboter faehrt in die Station, es kommen
+//     KEINE Frames mehr — ohne refresh() bliebe der letzte Stand (Ausgrauung) eingefroren.
+{
+  const T = require('../lib/haMap').DreameVacuumTaskStatus;
+  const S = require('../lib/haMap').DreameVacuumStatus;
+  const frame = buildFrame({
+    frameId: 1, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix,
+    meta: { fsm: 1, ris: 2, seg_inf: { 1: {}, 2: {} }, sa: [[2, 1, 0, 0]], tr: 'S100,100L10,0' },
+  });
+
+  // waehrend der Reinigung: Ausgrauung aktiv
+  const mm = new MapMerger();
+  mm.setDeviceStatus({ taskStatus: T.SEGMENT_CLEANING, status: S.SEGMENT_CLEANING });
+  d = decodeFrame(mm.process(frame));
+  assert(d.meta.ha.activeSegments && d.meta.ha.activeSegments[0] === 2, 'waehrend der Reinigung: Raum aktiv');
+
+  // Auftrag endet — OHNE neuen Frame, nur Status wechselt + refresh() (wie HAs refresh_map)
+  mm.setDeviceStatus({ taskStatus: T.COMPLETED, status: S.SLEEPING });
+  d = decodeFrame(mm.refresh());
+  assert(d.meta.ha.activeSegments === null,
+    `nach Auftragsende taut die Ausgrauung ohne neuen Frame auf (war ${JSON.stringify(d.meta.ha.activeSegments)})`);
+
+  // clear_path: Spur + aktive Segmente/Zonen weg, dirty gesetzt (map.py 1997-2007)
+  const mc = new MapMerger();
+  mc.setDeviceStatus({ taskStatus: T.SEGMENT_CLEANING, status: S.SEGMENT_CLEANING });
+  mc.process(frame);
+  assert(decodeFrame(mc._buildFrame()).meta.trpts.length > 0, 'vor clear_path ist eine Spur da');
+  d = decodeFrame(mc.clearPath());
+  assert(d.meta.trpts.length === 0, `clear_path loescht die Spur (waren ${d.meta.trpts.length} Punkte)`);
+  assert(d.meta.ha.activeSegments === null, 'clear_path loescht active_segments');
+  assert(mc.current.dirty === true, 'clear_path setzt dirty (HA-Guard gegen doppelte Editor-Ops)');
+
+  // dirty ist beim naechsten I-Frame wieder weg (HA legt dort ein neues MapData-Objekt an)
+  mc.process(buildFrame({
+    mapId: 2, frameId: 0, frameType: 73, gridSize: 50, width: 4, height: 4, originX: 0, originY: 0, pixels: iPix,
+    meta: { fsm: 1, ris: 2, seg_inf: { 1: {} }, timestamp_ms: 9999999999999 },
+  }));
+  assert(!mc.current.dirty, 'neuer I-Frame setzt dirty zurueck');
+
+  // reset_map: Karte verworfen (map.py 2009-2029)
+  const mr = new MapMerger();
+  mr.process(frame);
+  mr.resetMap();
+  assert(mr.current.empty_map === true && mr.current.dimensions.width === 0 && mr.current.saved_map_status === 0,
+    'reset_map verwirft die Karte (empty_map, Groesse 0, saved_map_status 0)');
+
+  // refresh() ohne Karte darf nicht knallen
+  assert(new MapMerger().refresh() === null, 'refresh() ohne Karte liefert null');
+}
+
 console.log(`\nErgebnis: ${ok} OK, ${fail} FAIL`);
 process.exit(fail ? 1 : 0);

@@ -25,6 +25,18 @@ try {
 
 const { decodeMultiMapData } = require('./lib/dreame');
 const { MapMerger, readHeader, HEADER_SIZE } = require('./lib/mapMerge');
+const { DreameVacuumTaskStatus } = require('./lib/haMap');
+
+// Eigenschaften, an denen in HA das Neuzeichnen der Karte haengt (device.py 435, 500-506).
+// Schluessel im Format siid-piid, passend zu PROPERTY_NAME_MAP weiter unten.
+const PROP_STATE = '2-1'; // HA DreameVacuumProperty.STATE
+const PROP_STATUS = '4-1'; // HA DreameVacuumProperty.STATUS
+const PROP_TASK_STATUS = '4-7'; // HA DreameVacuumProperty.TASK_STATUS
+const PROP_CLEANING_PAUSED = '4-17'; // HA DreameVacuumProperty.CLEANING_PAUSED
+const PROP_CUSTOMIZED_CLEANING = '4-26'; // HA DreameVacuumProperty.CUSTOMIZED_CLEANING
+const PROP_AUTO_EMPTY_STATUS = '15-5'; // HA DreameVacuumProperty.AUTO_EMPTY_STATUS
+// ➖ HA lauscht zusaetzlich auf AUTO_CHANGE_MOP — die Eigenschaft steht nicht in unserer
+// Property-Tabelle (Geraet liefert sie nicht). In PORT_STATUS.md vermerkt.
 const _zlib = require('zlib');
 const { getRoomDisplayName, buildSegmentTypeMap } = require('./lib/cleanset');
 
@@ -3343,6 +3355,11 @@ class Dreame extends utils.Adapter {
         const messageDid = String(message.did || message.data.did || '');
         for (const element of message.data.params) {
           const did = String(element.did || messageDid);
+          // Eigenschaftsspeicher fuellen + Listener feuern — 1:1 die Stelle, an der HA
+          // seine self.listen(...)-Callbacks ausloest: sobald der Wert per MQTT ankommt,
+          // synchron, mit altem UND neuem Wert. Bewusst VOR der spec-Pruefung, damit der
+          // Speicher unabhaengig davon ist, ob fuer die Eigenschaft ein State existiert.
+          this._propertyChanged(did, element.siid, element.piid, element.value);
           if (!this.specPropsToIdDict[did]) {
             this.log.debug(`No spec found for ${did}`);
             continue;
@@ -3359,8 +3376,9 @@ class Dreame extends utils.Adapter {
                 this._diagFrame('MQTT-6-1', encode);
                 try {
                   if (!this.mapMerger) this.mapMerger = new MapMerger({ log: this.log });
-                  // Geraetestatus fuer HAs Render-Vorverarbeitung (device.py self.status.*).
-                  this.mapMerger.setDeviceStatus(await this._readDeviceStatus(did));
+                  // Geraetestatus fuer HAs Render-Vorverarbeitung (device.py self.status.*) —
+                  // synchron aus dem Eigenschaftsspeicher, nicht aus der State-Datenbank.
+                  this.mapMerger.setDeviceStatus(this._deviceStatus(did));
                   const merged = this.mapMerger.process(encode);
                   if (merged) await this._writeMerged(did, merged);
                   // Kleine Frame-Luecke: fehlenden P-Frame GEZIELT nachfordern
@@ -3861,26 +3879,108 @@ class Dreame extends utils.Adapter {
   }
 
   /**
-   * Liest den Live-Geraetestatus fuer HAs Render-Vorverarbeitung (device.py nutzt dort
-   * self.status.task_status / status / cleaning_paused). Die Werte kommen ueber die
-   * Property-States herein, nicht ueber die Kartenframes.
+   * Eigenschaftsspeicher — Gegenstueck zu HAs `self._properties` im Geraeteobjekt.
+   * TA2ks Adapter schreibt MQTT-Werte direkt in States und haelt sie nirgends; HA braucht
+   * sie aber synchron und mit Vorgaengerwert, weil mehrere Entscheidungen genau daran
+   * haengen (device.py _task_status_changed: `previous_task_status`).
    */
-  async _readDeviceStatus(did) {
-    const num = async (id) => {
-      const st = await this.getStateAsync(`${did}.status.${id}`);
-      return st && st.val != null ? Number(st.val) : null;
-    };
-    try {
-      const [taskStatus, status, cleaningPaused] = await Promise.all([
-        num('task-status'),
-        num('status'),
-        num('cleaning-paused'),
-      ]);
-      return { taskStatus, status, cleaningPaused: !!cleaningPaused };
-    } catch (e) {
-      this.log.debug('[MERGE] Geraetestatus lesen: ' + (e && e.message));
-      return null;
+  _propertyChanged(did, siid, piid, value) {
+    if (!did || siid == null || piid == null) return;
+    const key = `${siid}-${piid}`;
+    if (!this._props) this._props = {};
+    if (!this._props[did]) this._props[did] = {};
+    const previous = this._props[did][key];
+    this._props[did][key] = value;
+    if (previous === value) return; // HA feuert nur bei echter Aenderung
+
+    // HA device.py 435 + 500-506: genau diese Eigenschaften sind an das Neuzeichnen
+    // der Karte gekoppelt. Namen aus unserer Property-Tabelle (siehe oben im File).
+    if (key === PROP_TASK_STATUS) {
+      this._taskStatusChanged(did, previous, value);
+    } else if (key === PROP_STATE || key === PROP_CUSTOMIZED_CLEANING || key === PROP_AUTO_EMPTY_STATUS) {
+      // device.py 877-880 _map_property_changed: "Update last update time of the map when a
+      // property associated with rendering map changed."
+      this._mapPropertyChanged(did, previous);
     }
+  }
+
+  /** Aktueller Geraetestatus aus dem Speicher (HA: self.status.* in device.py). */
+  _deviceStatus(did) {
+    const p = (this._props && this._props[did]) || {};
+    const num = (k) => (p[k] != null ? Number(p[k]) : null);
+    return { taskStatus: num(PROP_TASK_STATUS), status: num(PROP_STATUS), cleaningPaused: !!num(PROP_CLEANING_PAUSED) };
+  }
+
+  /**
+   * 1:1-Port von device.py `_map_property_changed` (877-880).
+   * HA: "Update last update time of the map when a property associated with rendering map
+   * changed." — nur wenn ein Vorgaengerwert existierte.
+   */
+  _mapPropertyChanged(did, previousProperty) {
+    if (!this.mapMerger || previousProperty === undefined) return;
+    this.mapMerger.setDeviceStatus(this._deviceStatus(did));
+    this._refreshMap(did);
+  }
+
+  /**
+   * 1:1-Port von device.py `_task_status_changed` (1127-1160, Karten-Teil).
+   * HA-Kommentar: "Task status is a very important property and must be listened to trigger
+   * necessary actions when a task started or ended".
+   *
+   * ➖ NICHT portiert: HAs Buchhaltung im selben Block (1159-1215) — cleanup_started/
+   * cleanup_completed, Reinigungsverlauf-Trigger, CleanGenius-Wiederherstellung,
+   * cleaning_route-Ruecksetzung, Cruise-Point-Behandlung. Das speist HA-Sensoren und
+   * -Automationen, nicht die Karte. (In PORT_STATUS.md vermerkt.)
+   */
+  _taskStatusChanged(did, previousTaskStatus, taskStatus) {
+    if (!this.mapMerger || previousTaskStatus === undefined) return;
+    const T = DreameVacuumTaskStatus;
+    const prev = Number(previousTaskStatus);
+    const now = Number(taskStatus);
+    this.mapMerger.setDeviceStatus(this._deviceStatus(did));
+
+    const current = this.mapMerger.current;
+    if (!current || current.dirty) return; // HA: `if current_map is not None and not current_map.dirty`
+
+    let merged = null;
+    if (prev === T.COMPLETED) {
+      if (
+        now === T.AUTO_CLEANING ||
+        now === T.ZONE_CLEANING ||
+        now === T.SEGMENT_CLEANING ||
+        now === T.SPOT_CLEANING ||
+        now === T.CRUISING_PATH ||
+        now === T.CRUISING_POINT
+      ) {
+        // Clear path on current map on cleaning start as implemented on the app
+        merged = this.mapMerger.clearPath();
+      } else if (now === T.FAST_MAPPING) {
+        // Clear current map on mapping start as implemented on the app
+        merged = this.mapMerger.resetMap();
+      } else {
+        merged = this.mapMerger.refresh();
+      }
+    } else {
+      merged = this.mapMerger.refresh();
+    }
+    if (merged) {
+      this.log.debug(`[MERGE] task_status ${prev} -> ${now}: Karte neu gebaut`);
+      this._writeMerged(did, merged).catch((e) => this.log.debug('[MERGE] refresh: ' + (e && e.message)));
+    }
+  }
+
+  /**
+   * HAs `refresh_map` nutzt einen 0.2s-Timer als Sammelfenster (map.py 1919-1921), damit
+   * mehrere Eigenschaftsaenderungen aus einem MQTT-Paket nur ein Neuzeichnen ausloesen.
+   */
+  _refreshMap(did) {
+    if (this._refreshTimer) clearTimeout(this._refreshTimer);
+    this._refreshTimer = setTimeout(() => {
+      this._refreshTimer = null;
+      if (!this.mapMerger) return;
+      const merged = this.mapMerger.refresh();
+      if (merged) this._writeMerged(did, merged).catch((e) => this.log.debug('[MERGE] refresh: ' + (e && e.message)));
+    }, 200);
   }
 
   /** Schreibt die gemergte Karte als CloudData-Blob (Format wie dreamehome) in einen State. */
