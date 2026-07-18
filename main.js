@@ -5295,8 +5295,21 @@ class Dreame extends utils.Adapter {
           const hit = inflated.indexOf('cleanset');
           const j = inflated.indexOf('{');
           this.log.info(`[PROBE] ${objName}: BLOB entpackt (${inflated.length} B). cleanset ${
-            hit >= 0 ? 'GEFUNDEN' : 'NICHT drin'}. Anfang: ${inflated.slice(j >= 0 ? j : 0, (j >= 0 ? j : 0) + 280)}`);
-          if (hit >= 0) this.log.info(`[PROBE] cleanset-Ausschnitt: ...${inflated.slice(hit, hit + 180)}...`);
+            hit >= 0 ? 'GEFUNDEN' : 'NICHT drin'}`);
+          // ALLE Felder auflisten, damit sichtbar wird, was sonst noch mitkommt
+          try {
+            const o = JSON.parse(inflated.slice(j >= 0 ? j : 0));
+            const ks = Object.keys(o);
+            this.log.info(`[PROBE] ${objName}: ${ks.length} Felder: ${ks.join(', ')}`);
+            for (const k of ks) {
+              const v = o[k];
+              const s = typeof v === 'string' ? v : JSON.stringify(v);
+              this.log.info(`[PROBE]   ${k} = ${String(s).slice(0, 110)}${String(s).length > 110 ? ' …' : ''}`);
+            }
+          } catch (e4) {
+            this.log.info(`[PROBE] ${objName}: JSON-Parse fehlgeschlagen (${e4.message}). Anfang: ${
+              inflated.slice(j >= 0 ? j : 0, (j >= 0 ? j : 0) + 280)}`);
+          }
         } catch (e3) {
           this.log.info(`[PROBE] ${objName}: kein mapstr, Blob-inflate-Fehler ${e3.message}. Rohanfang: ${raw.slice(0, 120)}`);
         }
