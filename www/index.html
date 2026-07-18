@@ -24,13 +24,15 @@
   html,body{margin:0;height:100%}
   body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     background:var(--bg); color:var(--txt);}
-  /* Kein eigener Rahmen, keine Breitenbegrenzung: laeuft spaeter im iframe bzw. im
-     HTML-Widget, dessen Rahmen sonst doppelt waere. Immer die volle Flaeche nutzen. */
-  .app{width:100%; min-height:100%; background:var(--panel); overflow:hidden;}
+  /* Kein eigener Rahmen, keine Breitenbegrenzung: laeuft im iframe bzw. im HTML-Widget,
+     dessen Rahmen sonst doppelt waere. Immer die volle Flaeche nutzen — auch in der Hoehe:
+     Kopfzeile nimmt, was sie braucht, der Rest geht an Karte und Seitenspalte. */
+  .app{width:100%; height:100%; background:var(--panel); overflow:hidden;
+    display:flex; flex-direction:column;}
   /* zoom (nicht transform:scale): zoom rechnet die neue Groesse in den Seitenaufbau ein,
      die Spalte wird also wirklich breiter und die Karte entsprechend schmaler. transform
      wuerde nur groesser malen und ueber die Karte hinausragen. */
-  .head{display:flex; align-items:center; gap:12px; padding:16px 20px;
+  .head{flex:none; display:flex; align-items:center; gap:12px; padding:16px 20px;
     border-bottom:1px solid var(--line); zoom:var(--ui);
     background:linear-gradient(180deg,var(--panel2),transparent);}
   .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);
@@ -51,10 +53,14 @@
     box-shadow:0 12px 34px rgba(0,0,0,.32);padding:14px 16px;display:none;}
   .gearpop.open{display:block;}
   .gearpop h2:first-child{margin-top:0}
-  .body{display:grid;grid-template-columns:1fr 250px}
+  /* Die Spaltenbreite muss mit --ui wachsen: die Spalte selbst ist gezoomt, die Spur im
+     Raster ist es nicht. Bliebe sie bei 250 px, waere der Inhalt bei 150 % abgeschnitten
+     und die Seite bekaeme einen waagerechten Rollbalken. */
+  .body{flex:1; min-height:0; display:grid;
+    grid-template-columns:1fr calc(250px * var(--ui))}
   @media (max-width:720px){ .body{grid-template-columns:1fr} }
 
-  .stage{position:relative; overflow:hidden; height:72vh; min-height:420px;
+  .stage{position:relative; overflow:hidden; height:100%; min-height:0;
     background:radial-gradient(circle at 50% 40%, rgba(43,180,226,.06), transparent 60%);
     touch-action:none;}
   /* KEIN will-change:transform hier! Das sagt dem Browser "dieses Element wird bewegt,
@@ -99,12 +105,19 @@
   .zoom button:hover{border-color:var(--accent)}
   .zoom button:active{transform:scale(.92);background:var(--panel2)}
 
-  /* Die Hoehe muss durch --ui geteilt werden: innerhalb eines gezoomten Elements zaehlen
-     eigene Pixel, 72vh waeren sonst am Ende 72vh * --ui echte Pixel und die Spalte stuende
-     unten ueber die Karte hinaus. */
+  /* Volle verfuegbare Hoehe, aber durch --ui geteilt: innerhalb eines gezoomten Elements
+     zaehlen eigene Pixel, 100 % waeren sonst am Ende 100 % * --ui echte Pixel und die
+     Spalte stuende unten hinaus. Ist der Inhalt laenger, rollt er innerhalb der Spalte. */
   .side{border-left:1px solid var(--line); padding:16px; background:var(--panel2);
-    zoom:var(--ui); max-height:calc((72vh + 42px) / var(--ui)); overflow-y:auto}
-  @media (max-width:720px){ .side{border-left:none;border-top:1px solid var(--line);max-height:none} }
+    zoom:var(--ui); height:calc(100% / var(--ui)); overflow-y:auto}
+  @media (max-width:720px){ .side{border-left:none;border-top:1px solid var(--line);height:auto} }
+  /* Schmal (Handy): Karte oben, Bedienung darunter — dann darf die Seite rollen, statt
+     alles in die Fensterhoehe zu quetschen. */
+  @media (max-width:720px){
+    .app{height:auto; min-height:100%}
+    .body{display:block}
+    .stage{height:60vh; min-height:320px}
+  }
   .side h2{font-size:11px;text-transform:uppercase;letter-spacing:1px;
     color:var(--muted);margin:0 0 12px}
   .toggles{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
