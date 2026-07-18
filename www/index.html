@@ -53,17 +53,14 @@
     box-shadow:0 12px 34px rgba(0,0,0,.32);padding:14px 16px;display:none;}
   .gearpop.open{display:block;}
   .gearpop h2:first-child{margin-top:0}
-  /* Die Spaltenbreite muss mit --ui wachsen: die Spalte selbst ist gezoomt, die Spur im
-     Raster ist es nicht. Bliebe sie bei 250 px, waere der Inhalt bei 150 % abgeschnitten
-     und die Seite bekaeme einen waagerechten Rollbalken. */
-  /* grid-template-rows:100% ist noetig, nicht schmueckend: ohne das richtet sich die Zeile
-     nach ihrem Inhalt. Eine Prozenthoehe darin ist dann unbestimmt, die Spalte faellt auf
-     ihre Inhaltshoehe zurueck und endet mitten im Bild. */
-  .body{flex:1; min-height:0; display:grid; grid-template-rows:100%;
-    grid-template-columns:1fr calc(250px * var(--ui))}
-  @media (max-width:720px){ .body{grid-template-columns:1fr} }
-
-  .stage{position:relative; overflow:hidden; height:100%; min-height:0;
+  /* Karte und Bedienspalte nebeneinander, beide auf voller Hoehe.
+     KEINE Prozenthoehen hier drin: die brauchen einen bestimmten Bezugswert, und den gab
+     es nicht — daher endete die Spalte mitten im Bild. Stattdessen streckt der Flexaufbau
+     beide Kinder von selbst auf die Hoehe der Zeile (align-items:stretch ist Standard),
+     ganz ohne Prozentrechnung.
+     Die Breite der Spalte muss mit --ui wachsen, weil ihr Inhalt gezoomt ist. */
+  .body{flex:1; min-height:0; display:flex; align-items:stretch}
+  .stage{flex:1; min-width:0; position:relative; overflow:hidden;
     background:radial-gradient(circle at 50% 40%, rgba(43,180,226,.06), transparent 60%);
     touch-action:none;}
   /* KEIN will-change:transform hier! Das sagt dem Browser "dieses Element wird bewegt,
@@ -108,18 +105,19 @@
   .zoom button:hover{border-color:var(--accent)}
   .zoom button:active{transform:scale(.92);background:var(--panel2)}
 
-  /* Volle verfuegbare Hoehe, aber durch --ui geteilt: innerhalb eines gezoomten Elements
-     zaehlen eigene Pixel, 100 % waeren sonst am Ende 100 % * --ui echte Pixel und die
-     Spalte stuende unten hinaus. Ist der Inhalt laenger, rollt er innerhalb der Spalte. */
-  .side{border-left:1px solid var(--line); padding:16px; background:var(--panel2);
-    zoom:var(--ui); height:calc(100% / var(--ui)); overflow-y:auto}
-  @media (max-width:720px){ .side{border-left:none;border-top:1px solid var(--line);height:auto} }
+  /* Der Kasten selbst wird NICHT gezoomt — er bekommt seine Hoehe vom Flexaufbau und
+     soll sie behalten. Gezoomt wird nur der Inhalt darin (.sidein). Dadurch bleiben
+     Hoehe und Zoom voneinander unabhaengig; wird der Inhalt zu lang, rollt er im Kasten. */
+  .side{flex:none; width:calc(250px * var(--ui)); min-height:0; overflow-y:auto;
+    border-left:1px solid var(--line); background:var(--panel2)}
+  .sidein{zoom:var(--ui); padding:16px}
   /* Schmal (Handy): Karte oben, Bedienung darunter — dann darf die Seite rollen, statt
      alles in die Fensterhoehe zu quetschen. */
   @media (max-width:720px){
     .app{height:auto; min-height:100%}
     .body{display:block}
     .stage{height:60vh; min-height:320px}
+    .side{width:auto; border-left:none; border-top:1px solid var(--line); overflow:visible}
   }
   .side h2{font-size:11px;text-transform:uppercase;letter-spacing:1px;
     color:var(--muted);margin:0 0 12px}
@@ -292,7 +290,7 @@
           <button id="z-reset" title="Zurücksetzen" aria-label="Ansicht zurücksetzen"></button>
         </div>
       </div>
-      <div class="side">
+      <div class="side"><div class="sidein">
         <h2>Reinigung</h2>
         <div class="clean" id="cleanPanel">
           <div class="selroom" id="selRoomName">Raum antippen zum Wählen</div>
@@ -335,7 +333,7 @@
           <div class="statlist" id="statList"></div>
         </details>
         <div id="err"></div>
-      </div>
+      </div></div>
     </div>
   </div>
 
