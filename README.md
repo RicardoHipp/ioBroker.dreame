@@ -43,29 +43,40 @@ from that project unchanged.
 
 ## Installation
 
+This fork is **not** part of the official ioBroker repositories. It has to be
+installed straight from GitHub.
+
+> **It replaces the official `dreame` adapter.** Both use the adapter name
+> `dreame`, so an existing installation is overwritten. Your instance settings
+> and objects are kept. To go back, install the upstream adapter again from the
+> Latest repository.
+
 ### Via ioBroker Admin (recommended)
 
-1. Make sure the "Latest" repository is active under
-   Admin → Settings → Repositories
-2. Go to the "Adapters" tab and search for "dreame"
-3. Click install
+1. Go to the **Adapters** tab
+2. Enable expert mode, then click the **cat icon** ("Install from custom URL")
+3. Enter the repository address and install:
 
-The adapter is currently available in the **Latest** repository. Stable
-repository inclusion has been requested (see status at
-https://github.com/ioBroker/ioBroker.repositories/pull/6200).
+```
+https://github.com/RicardoHipp/ioBroker.dreame
+```
 
 ### Via CLI
 
 ```
-iobroker install dreame@latest
+iobroker url https://github.com/RicardoHipp/ioBroker.dreame
 ```
+
+### Updating
+
+GitHub installations do **not** update themselves — the adapter tab will not
+offer a new version. Repeat the installation step above to pull the current
+state.
 
 ### For adapter development
 
-If you want to contribute to the adapter code itself (not just use it):
-
 ```
-git clone https://github.com/TA2k/ioBroker.dreame.git
+git clone https://github.com/RicardoHipp/ioBroker.dreame.git
 cd ioBroker.dreame
 npm install
 npm link
