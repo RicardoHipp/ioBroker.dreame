@@ -51,6 +51,16 @@ umstellen, am Gerät passierte aber nichts — ohne Fehlermeldung.
 **Jetzt:** Sie werden im richtigen Format gesendet und greifen.
 *(Betrifft auch das Original; als Fehlerbericht formuliert.)*
 
+### Raum-Einstellungen aus der App sind sofort sichtbar
+**Vorher:** Stellte man in der Dreame-App die Einstellung eines Raums um (Saugstärke,
+Wassermenge, Saugen/Wischen), blieb der Wert in ioBroker veraltet — teils tagelang. Er
+aktualisierte sich erst, wenn der Roboter das nächste Mal tatsächlich gereinigt hat.
+Ein Karten-Abruf half nicht.
+**Jetzt:** Die Änderung ist innerhalb von Sekunden in ioBroker zu sehen. Der Adapter merkt,
+wenn das Gerät neue Einstellungen bereitstellt, und holt sie sich aktiv.
+*(Während einer laufenden Reinigung wird bewusst nicht nachgeladen — da kommen die Werte
+ohnehin mit den Kartendaten.)*
+
 ### Raum-Einstellungen landen im richtigen Raum
 **Vorher:** Änderte man die Einstellung eines Raums (Saugstärke, Wasser, Modus), wurde
 teilweise ein **anderer** Raum verstellt — z. B. Änderung an der Küche landete im Wohnzimmer.
@@ -76,11 +86,8 @@ ist ein Ablauf für die ganze Wohnung.
 
 ## In Arbeit
 
-- **Raum-Einstellungen automatisch aktuell halten:** Wenn man in der Dreame-App die
-  Einstellung eines Raums ändert, soll das sofort in ioBroker sichtbar sein.
-  *(Der Weg dahin ist gefunden und am Gerät bestätigt; der Einbau steht noch aus.)*
-- **Test-Hilfe im Code:** Eine temporäre Diagnose-Funktion (`[PROBE]`-Meldungen im Log)
-  ist noch drin und fliegt wieder raus.
+- **Bedienung der Raumreinigung im Karten-Widget:** Räume anklicken und je Raum festlegen,
+  wie gereinigt wird (Saugen/Wischen, Wassermenge). Konzept steht, Umsetzung offen.
 
 ---
 

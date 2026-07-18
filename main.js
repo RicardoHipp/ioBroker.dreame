@@ -25,7 +25,7 @@ try {
 
 const { decodeMultiMapData } = require('./lib/dreame');
 const { MapMerger, readHeader, HEADER_SIZE } = require('./lib/mapMerge');
-const { DreameVacuumTaskStatus } = require('./lib/haMap');
+const { DreameVacuumTaskStatus, deviceStatusFlags } = require('./lib/haMap');
 
 // Eigenschaften, an denen in HA das Neuzeichnen der Karte haengt (device.py 435, 500-506).
 // Schluessel im Format siid-piid, passend zu PROPERTY_NAME_MAP weiter unten.
@@ -3471,17 +3471,21 @@ class Dreame extends utils.Adapter {
             }
           }
           const device = this.deviceArray.find((d) => String(d.did) === did);
-          // TEST-SONDE (temporaer): jeden NEUEN object_name (siid 6-3) einmal pruefen, ob das
-          // dahinterliegende Objekt ein cleanset traegt. Throttle: nur bei Wechsel + max 1x/5s.
+          // Raum-Einstellungen frisch halten: Aendert man in der App etwas an einem Raum, pusht
+          // das Geraet sofort einen neuen object_name (6-3). Die Werte selbst stecken im
+          // dahinterliegenden Cloud-Objekt, also dieses nachladen (wie HA handle_properties).
+          // Nicht waehrend der Reinigung (HA: `not self._device_running`) — da kommen die Werte
+          // ohnehin mit den Kartenframes und der Push feuert dauernd.
           if (device && !this.isMower(device) && element.siid === 6 && element.piid === 3) {
             const _obj = String(element.value || '');
-            // Throttle NUR pro object_name: jeder unterschiedliche Slot wird einmal geprueft
-            // (damit .../1 nach .../0 nicht verschluckt wird). Merkt sich die letzten 5 Slots.
-            if (!this._probedObjs) this._probedObjs = [];
-            if (_obj && !this._probedObjs.includes(_obj)) {
-              this._probedObjs.push(_obj);
-              if (this._probedObjs.length > 6) this._probedObjs.shift();
-              this._probeObjectForCleanset(_obj, device).catch(() => {});
+            const _st = this._deviceStatus(did);
+            const _laeuft = deviceStatusFlags(_st).started;
+            // je object_name nur einmal laden (die letzten Slots merken)
+            if (!this._loadedCleansetObjs) this._loadedCleansetObjs = [];
+            if (_obj && !_laeuft && !this._loadedCleansetObjs.includes(_obj)) {
+              this._loadedCleansetObjs.push(_obj);
+              if (this._loadedCleansetObjs.length > 6) this._loadedCleansetObjs.shift();
+              this._loadCleansetFromObject(_obj, device).catch(() => {});
             }
           }
           if (this.isMower(device) && element.siid === 1 && element.piid === 4) {
@@ -4143,87 +4147,104 @@ class Dreame extends utils.Adapter {
             if (value != null) {
               const pathMap = In_path + key + '.' + Subkey;
               if (pathMap.toString().indexOf('.cleanset') != -1) {
-                const _mapDid = In_path.split('.')[0];
-                const _areaInfo = this._areaInfoByDid[_mapDid];
-                if (!_areaInfo && !this._loggedMissingAreaInfo[_mapDid]) {
-                  this._loggedMissingAreaInfo[_mapDid] = true;
-                  this.log.debug(
-                    `Room names not yet available for device ${_mapDid} - waiting for map data via getMap(). Using generic room numbers until next successful map fetch.`,
-                  );
-                }
-                const _roomResult = getRoomDisplayName(Subkey, _areaInfo ? _areaInfo[Subkey] : null);
-                let _roomName;
-                if (_roomResult.type === 'custom') {
-                  _roomName = _roomResult.value;
-                } else if (_roomResult.type === 'predefined') {
-                  const _translated = I18n.getTranslatedObject(_roomResult.nameKey);
-                  if (_roomResult.indexSuffix > 0) {
-                    _roomName = Object.fromEntries(
-                      Object.entries(_translated).map(([lang, val]) => [lang, `${val} ${_roomResult.indexSuffix}`]),
-                    );
-                  } else {
-                    _roomName = _translated;
-                  }
-                } else {
-                  _roomName = _roomResult.value;
-                }
-                await this.extendObject(pathMap, {
-                  type: 'channel',
-                  common: {
-                    name: _roomName,
-                  },
-                  // roomId = echte Raum-/Segment-ID (der cleanset-Schluessel Subkey).
-                  // Wird beim Schreiben ans Geraet gebraucht; NICHT die RoomOrder (Reihenfolge)
-                  // verwenden – die kollidiert mit fremden Raum-Schluesseln (Kueche Order 4 =
-                  // Wohnzimmer Schluessel 4) und schrieb die Aenderung in den falschen Raum.
-                  native: { roomId: Number(Subkey) },
-                });
-                //this.log.info(' Long subkey ' + Subvalue.length + ' / ' + Subvalue[3]);
-                if (Subvalue.length == 6) {
-                  if (UpdateCleanset) {
-                    const did = In_path.split('.')[0];
-                    const cleansetDevice = this.deviceArray.find((d) => String(d.did) === String(did));
-                    const isMowerDevice = this.isMower(cleansetDevice);
-                    for (let i = 0; i < Subvalue.length; i += 1) {
-                      //1: DreameLevel, 2: DreameWaterVolume, 3: DreameRepeat, 4: DreameRoomNumber, 5: DreameCleaningMode, 6: Route
-                      //map-req[{"piid": 2,"value": "{\"req_type\":1,\"frame_type\":I,\"force_type\":1}"}]
-                      let pathMap = In_path + key + '.' + Subkey + '.RoomSettings';
-                      this.getType(JSON.stringify(Subvalue), pathMap);
-                      this.setState(pathMap, JSON.stringify(Subvalue), true);
-                      pathMap = In_path + key + '.' + Subkey + '.RoomOrder';
-                      this.getType(parseFloat(Subvalue[3]), pathMap);
-                      this.setState(pathMap, parseFloat(Subvalue[3]), true);
-                      if (!isMowerDevice) {
-                        pathMap = In_path + key + '.' + Subkey + '.Level';
-                        this.setcleansetPath(pathMap, DreameLevel);
-                        this.setState(pathMap, Subvalue[0], true);
-                        pathMap = In_path + key + '.' + Subkey + '.CleaningMode';
-                        this.setcleansetPath(pathMap, DreameCleaningMode);
-                        this.setState(pathMap, Subvalue[4], true);
-                        pathMap = In_path + key + '.' + Subkey + '.WaterVolume';
-                        this.setcleansetPath(pathMap, DreameWaterVolume);
-                        this.setState(pathMap, Subvalue[1], true);
-                      }
-                      pathMap = In_path + key + '.' + Subkey + '.Repeat';
-                      this.setcleansetPath(pathMap, DreameRepeat);
-                      this.setState(pathMap, Subvalue[2], true);
-                      pathMap = In_path + key + '.' + Subkey + '.Route';
-                      this.setcleansetPath(pathMap, DreameRoute);
-                      this.setState(pathMap, Subvalue[5], true);
-                      pathMap = In_path + key + '.' + Subkey + '.Cleaning';
-                      await this.setcleansetPath(pathMap, DreameRoomClean);
-                      const Cleanstates = await this.getStateAsync(pathMap);
-                      if (Cleanstates == null) {
-                        this.setStateAsync(pathMap, 0, true);
-                      }
-                    }
-                  }
-                }
+                await this._applyCleansetRoom(In_path, key, Subkey, Subvalue);
               } else {
                 this.getType(Subvalue, pathMap);
                 this.setState(pathMap, JSON.stringify(Subvalue), true);
               }
             }
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Schreibt die Einstellungen EINES Raums aus dem cleanset in die States.
+   * Herausgeloest aus setMapInfos, damit derselbe Code auch beim Nachladen des
+   * Karten-Objekts (object_name, siid 6-3) genutzt werden kann — sonst waeren die
+   * Raum-Einstellungen nur so aktuell wie der letzte Kartenframe.
+   *
+   * @param In_path  z.B. "<did>.map."
+   * @param key      "cleanset"
+   * @param Subkey   Raum-/Segment-ID (der cleanset-Schluessel)
+   * @param Subvalue [Level, WaterVolume, Repeat, RoomOrder, CleaningMode, Route]
+   */
+  async _applyCleansetRoom(In_path, key, Subkey, Subvalue, quelle = 'Kartenframe') {
+    const pathMap = In_path + key + '.' + Subkey;
+    this.log.debug(`[CLEANSET] Raum ${Subkey} aktualisiert (Quelle: ${quelle}): ${JSON.stringify(Subvalue)}`);
+    const _mapDid = In_path.split('.')[0];
+    const _areaInfo = this._areaInfoByDid[_mapDid];
+    if (!_areaInfo && !this._loggedMissingAreaInfo[_mapDid]) {
+      this._loggedMissingAreaInfo[_mapDid] = true;
+      this.log.debug(
+        `Room names not yet available for device ${_mapDid} - waiting for map data via getMap(). Using generic room numbers until next successful map fetch.`,
+      );
+    }
+    const _roomResult = getRoomDisplayName(Subkey, _areaInfo ? _areaInfo[Subkey] : null);
+    let _roomName;
+    if (_roomResult.type === 'custom') {
+      _roomName = _roomResult.value;
+    } else if (_roomResult.type === 'predefined') {
+      const _translated = I18n.getTranslatedObject(_roomResult.nameKey);
+      if (_roomResult.indexSuffix > 0) {
+        _roomName = Object.fromEntries(
+          Object.entries(_translated).map(([lang, val]) => [lang, `${val} ${_roomResult.indexSuffix}`]),
+        );
+      } else {
+        _roomName = _translated;
+      }
+    } else {
+      _roomName = _roomResult.value;
+    }
+    await this.extendObject(pathMap, {
+      type: 'channel',
+      common: {
+        name: _roomName,
+      },
+      // roomId = echte Raum-/Segment-ID (der cleanset-Schluessel Subkey).
+      // Wird beim Schreiben ans Geraet gebraucht; NICHT die RoomOrder (Reihenfolge)
+      // verwenden – die kollidiert mit fremden Raum-Schluesseln (Kueche Order 4 =
+      // Wohnzimmer Schluessel 4) und schrieb die Aenderung in den falschen Raum.
+      native: { roomId: Number(Subkey) },
+    });
+    //this.log.info(' Long subkey ' + Subvalue.length + ' / ' + Subvalue[3]);
+    if (Subvalue.length == 6) {
+      if (UpdateCleanset) {
+        const did = In_path.split('.')[0];
+        const cleansetDevice = this.deviceArray.find((d) => String(d.did) === String(did));
+        const isMowerDevice = this.isMower(cleansetDevice);
+        for (let i = 0; i < Subvalue.length; i += 1) {
+          //1: DreameLevel, 2: DreameWaterVolume, 3: DreameRepeat, 4: DreameRoomNumber, 5: DreameCleaningMode, 6: Route
+          //map-req[{"piid": 2,"value": "{\"req_type\":1,\"frame_type\":I,\"force_type\":1}"}]
+          let pathMap = In_path + key + '.' + Subkey + '.RoomSettings';
+          this.getType(JSON.stringify(Subvalue), pathMap);
+          this.setState(pathMap, JSON.stringify(Subvalue), true);
+          pathMap = In_path + key + '.' + Subkey + '.RoomOrder';
+          this.getType(parseFloat(Subvalue[3]), pathMap);
+          this.setState(pathMap, parseFloat(Subvalue[3]), true);
+          if (!isMowerDevice) {
+            pathMap = In_path + key + '.' + Subkey + '.Level';
+            this.setcleansetPath(pathMap, DreameLevel);
+            this.setState(pathMap, Subvalue[0], true);
+            pathMap = In_path + key + '.' + Subkey + '.CleaningMode';
+            this.setcleansetPath(pathMap, DreameCleaningMode);
+            this.setState(pathMap, Subvalue[4], true);
+            pathMap = In_path + key + '.' + Subkey + '.WaterVolume';
+            this.setcleansetPath(pathMap, DreameWaterVolume);
+            this.setState(pathMap, Subvalue[1], true);
+          }
+          pathMap = In_path + key + '.' + Subkey + '.Repeat';
+          this.setcleansetPath(pathMap, DreameRepeat);
+          this.setState(pathMap, Subvalue[2], true);
+          pathMap = In_path + key + '.' + Subkey + '.Route';
+          this.setcleansetPath(pathMap, DreameRoute);
+          this.setState(pathMap, Subvalue[5], true);
+          pathMap = In_path + key + '.' + Subkey + '.Cleaning';
+          await this.setcleansetPath(pathMap, DreameRoomClean);
+          const Cleanstates = await this.getStateAsync(pathMap);
+          if (Cleanstates == null) {
+            this.setStateAsync(pathMap, 0, true);
           }
         }
       }
@@ -5248,74 +5269,52 @@ class Dreame extends utils.Adapter {
     }
   }
 
-  // TEST-SONDE (temporaer): laedt das Objekt hinter einem object_name (siid 6-3) und loggt,
-  // ob ein cleanset-Feld drin ist. Damit pruefen wir, ob das bei App-Aenderungen gepushte
-  // Objekt (z.B. .../1) die frischen Raum-Einstellungen traegt. Reines Logging.
-  async _probeObjectForCleanset(objName, device) {
+  /**
+   * Laedt das Karten-Objekt hinter einem object_name (siid 6-3) und uebernimmt die darin
+   * enthaltenen Raum-Einstellungen (cleanset) in die States.
+   *
+   * Hintergrund: Aendert man in der App die Einstellung eines Raums, pusht das Geraet sofort
+   * einen neuen object_name — die Werte selbst stecken aber im dahinterliegenden Cloud-Objekt
+   * (zlib-komprimiertes JSON mit u.a. dem Feld "cleanset"). Ohne dieses Nachladen waeren die
+   * Raum-Einstellungen nur so aktuell wie der letzte Kartenframe, der ein cleanset trug —
+   * praktisch also nur nach einer Reinigung. HA macht dasselbe (map.py handle_properties ->
+   * _add_cloud_map_data).
+   *
+   * Bewusst NUR das cleanset: Kartendaten (rism, robot, tr, ...) kommen ueber die Live-Frames,
+   * der Rest des Objekts sind Statistiken bzw. Felder, die es schon als eigene Properties gibt.
+   */
+  async _loadCleansetFromObject(objName, device) {
     try {
       const url = await this.getFile(objName, device);
-      if (!url) { this.log.info(`[PROBE] ${objName}: keine Download-URL`); return; }
+      if (!url) return;
       const res = await this.requestClient({
         method: 'get',
         headers: { Accept: '*/*', 'Accept-Language': 'de-de', Connection: 'keep-alive',
           'User-Agent': 'Dreame_Smarthome/1043 CFNetwork/1240.0.4 Darwin/20.6.0' },
         url,
       });
-      const data = res.data;
-      const raw = typeof data === 'string' ? data : JSON.stringify(data);
-      this.log.info(`[PROBE] ${objName}: geladen (${raw.length} Zeichen), Top-Keys: ${
-        typeof data === 'object' && data ? Object.keys(data).join(',') : '(String)'}`);
-      // Karten-String extrahieren + dekomprimieren, dann dort nach cleanset suchen
-      let ms = null;
-      try {
-        const obj = typeof data === 'object' ? data : JSON.parse(raw);
-        if (obj && obj.mapstr && obj.mapstr[0]) ms = obj.mapstr[0].map;
-        else if (obj && Array.isArray(obj) && obj[0] && obj[0].info) ms = obj[0].info[0] && obj[0].info[0].map;
-      } catch (e2) { /* kein JSON */ }
-      if (ms) {
-        let b64 = String(ms);
-        const ci = b64.indexOf(',');
-        if (ci > 100) b64 = b64.slice(0, ci); // evtl. Thumbnail,Karte
-        b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
-        const zlib = require('zlib');
-        const inflated = zlib.inflateSync(Buffer.from(b64, 'base64')).toString('latin1');
-        const j = inflated.indexOf('{', 27);
-        const keys = j >= 0 ? inflated.slice(j, j + 220) : '(kein JSON-Teil)';
-        const hit = inflated.indexOf('cleanset');
-        this.log.info(`[PROBE] ${objName}: mapstr entpackt (${inflated.length} B). cleanset ${
-          hit >= 0 ? 'GEFUNDEN' : 'NICHT drin'}. JSON-Anfang: ${keys}`);
-        if (hit >= 0) this.log.info(`[PROBE] cleanset-Ausschnitt: ...${inflated.slice(hit, hit + 160)}...`);
-      } else {
-        // kein mapstr -> ganzer body ist evtl. direkt zlib-komprimiert (Anfang "eF" = 0x78 0x9c)
-        let b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
-        b64 += '='.repeat((4 - (b64.length % 4)) % 4);
-        try {
-          const zlib = require('zlib');
-          const inflated = zlib.inflateSync(Buffer.from(b64, 'base64')).toString('latin1');
-          const hit = inflated.indexOf('cleanset');
-          const j = inflated.indexOf('{');
-          this.log.info(`[PROBE] ${objName}: BLOB entpackt (${inflated.length} B). cleanset ${
-            hit >= 0 ? 'GEFUNDEN' : 'NICHT drin'}`);
-          // ALLE Felder auflisten, damit sichtbar wird, was sonst noch mitkommt
-          try {
-            const o = JSON.parse(inflated.slice(j >= 0 ? j : 0));
-            const ks = Object.keys(o);
-            this.log.info(`[PROBE] ${objName}: ${ks.length} Felder: ${ks.join(', ')}`);
-            for (const k of ks) {
-              const v = o[k];
-              const s = typeof v === 'string' ? v : JSON.stringify(v);
-              this.log.info(`[PROBE]   ${k} = ${String(s).slice(0, 110)}${String(s).length > 110 ? ' …' : ''}`);
-            }
-          } catch (e4) {
-            this.log.info(`[PROBE] ${objName}: JSON-Parse fehlgeschlagen (${e4.message}). Anfang: ${
-              inflated.slice(j >= 0 ? j : 0, (j >= 0 ? j : 0) + 280)}`);
-          }
-        } catch (e3) {
-          this.log.info(`[PROBE] ${objName}: kein mapstr, Blob-inflate-Fehler ${e3.message}. Rohanfang: ${raw.slice(0, 120)}`);
-        }
+      const raw = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+      // Objekt ist base64+zlib (Anfang "eF" = 0x78 0x9c)
+      let b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+      b64 += '='.repeat((4 - (b64.length % 4)) % 4);
+      const inflated = zlib.inflateSync(Buffer.from(b64, 'base64')).toString('latin1');
+      const j = inflated.indexOf('{');
+      if (j < 0) return;
+      const obj = JSON.parse(inflated.slice(j));
+      if (!obj || obj.cleanset === undefined) return;
+      // cleanset ist ein JSON-String: {"<raumId>":[Level,Wasser,Wdh,Reihenfolge,Modus,Route], ...}
+      const cs = typeof obj.cleanset === 'string' ? JSON.parse(obj.cleanset) : obj.cleanset;
+      if (!cs || typeof cs !== 'object') return;
+      const did = String(device.did);
+      let n = 0;
+      for (const [roomId, arr] of Object.entries(cs)) {
+        if (!Array.isArray(arr) || arr.length !== 6) continue;
+        await this._applyCleansetRoom(`${did}.map.`, 'cleanset', roomId, arr, 'Nachladen');
+        n++;
       }
+      if (n) this.log.debug(`[CLEANSET] ${n} Raeume aus ${objName} uebernommen`);
     } catch (e) {
-      this.log.info(`[PROBE] ${objName}: Fehler ${(e && e.message) || e}`);
+      this.log.debug(`[CLEANSET] Nachladen von ${objName} fehlgeschlagen: ${(e && e.message) || e}`);
     }
   }
 
