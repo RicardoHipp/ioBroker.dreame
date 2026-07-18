@@ -1810,9 +1810,15 @@
     document.addEventListener('keydown', e=>{ if(e.key==='Escape') setGear(false); });
     stage.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(e.clientX,e.clientY, e.deltaY<0?1.15:1/1.15); }, {passive:false});
     let drag=false, lx=0, ly=0, sx0=0, sy0=0, downT=null;
-    stage.addEventListener('pointerdown', e=>{ drag=true; lx=e.clientX; ly=e.clientY; sx0=e.clientX; sy0=e.clientY; downT=e.target; wrap.classList.add('drag'); stage.setPointerCapture(e.pointerId); });
+    // Echte Bedienelemente ueber der Karte (Zoom-Leiste) duerfen das Ziehen nicht ausloesen:
+    // setPointerCapture unten wuerde sonst auch den anschliessenden Klick auf die Karte
+    // umleiten, und der Knopf bekaeme ihn nie zu sehen.
+    const aufBedienung = t => !!(t && t.closest && t.closest('.zoom'));
+    stage.addEventListener('pointerdown', e=>{ if(aufBedienung(e.target)) return;
+      drag=true; lx=e.clientX; ly=e.clientY; sx0=e.clientX; sy0=e.clientY; downT=e.target; wrap.classList.add('drag'); stage.setPointerCapture(e.pointerId); });
     stage.addEventListener('pointermove', e=>{ if(!drag)return; tx+=e.clientX-lx; ty+=e.clientY-ly; lx=e.clientX; ly=e.clientY; clamp(); applyT(); });
-    stage.addEventListener('pointerup', e=>{ drag=false; wrap.classList.remove('drag');
+    stage.addEventListener('pointerup', e=>{ if(aufBedienung(e.target)) return;
+      drag=false; wrap.classList.remove('drag');
       const moved=Math.hypot(e.clientX-sx0, e.clientY-sy0);
       if(moved<5){
         // Badge und Station zuerst pruefen: beide liegen ueber der Raumflaeche, ein Tipp
