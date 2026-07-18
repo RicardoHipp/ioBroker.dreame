@@ -242,7 +242,7 @@
       <div class="side">
         <h2>Reinigung</h2>
         <div class="clean" id="cleanPanel">
-          <div class="selroom" id="selRoomName">Kein Raum gewählt</div>
+          <div class="selroom" id="selRoomName">Raum antippen zum Wählen</div>
           <div class="pickrow" id="custRow">
             <span class="pk">Reinigung</span>
             <span class="pv"><span id="custVal">Einheitlich</span></span>
@@ -775,7 +775,7 @@
     // (siehe baueBadge) — hier nur noch, OB etwas gewaehlt ist.
     nm.textContent = gewaehlt.length
       ? (gewaehlt.length === 1 ? '1 Raum gewählt' : gewaehlt.length + ' Räume gewählt')
-      : 'Kein Raum gewählt';
+      : 'Raum antippen zum Wählen';
 
     // Globale Regler ZEIGEN den Stand der gewaehlten Raeume: gleicher Wert -> dieser Wert,
     // unterschiedliche -> "Gemischt (min–max)". Verstellen setzt dann alle auf einmal.
