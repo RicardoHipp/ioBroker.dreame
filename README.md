@@ -18,8 +18,10 @@ Adapter for Dreame and MOVA robot vacuums and robot mowers.
 > the X40 does not have (roller mops, silver-ion modules, cameras) or on older
 > models without a laser scanner, which are not supported at all.
 >
-> If something does not work on your model, please open an issue and include the
-> model name — that is the only way these gaps get found.
+> If something does not work on your model, please
+> [open an issue](https://github.com/RicardoHipp/ioBroker.dreame/issues) and
+> include the model name — that is the only way these gaps get found. Issues
+> about the map belong here, not in the upstream project.
 
 ## About this fork
 
@@ -700,6 +702,7 @@ translations should be submitted as PRs against the respective
 MIT License
 
 Copyright (c) 2024-2026 TA2k <tombox2020@gmail.com>
+Copyright (c) 2026 Ricardo Hipp (fork: map handling and map widget)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
