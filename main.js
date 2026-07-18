@@ -4344,6 +4344,16 @@ class Dreame extends utils.Adapter {
             // zlib-Frame -> base64 (gleiche Form wie mapstr[].map, Merger inflatet es)
             freshBase64 = buf.toString('base64');
             this.log.info(`[MAP] frische Karte geladen (force I): ${freshObj} (${buf.length} B)`);
+            // Raum-Einstellungen (cleanset) aus demselben Objekt mitnehmen. Beim Adapterstart
+            // kommt kein object_name-Push, d.h. Aenderungen, die waehrend der Adapter aus war
+            // in der App gemacht wurden, wuerden sonst nie ankommen. Kein zusaetzlicher
+            // Download — der Inhalt liegt hier bereits vor.
+            try {
+              await this._applyCleansetFromInflated(
+                zlib.inflateSync(buf).toString('latin1'), String(device.did), 'Kartenabruf', freshObj);
+            } catch (e) {
+              this.log.debug(`[CLEANSET] aus Kartenabruf nicht lesbar: ${(e && e.message) || e}`);
+            }
           } else {
             this.log.warn('[MAP] frisches Objekt: kein zlib-Frame erkannt (' + typeof data + ')');
           }
@@ -5302,24 +5312,43 @@ class Dreame extends utils.Adapter {
       let b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
       b64 += '='.repeat((4 - (b64.length % 4)) % 4);
       const inflated = zlib.inflateSync(Buffer.from(b64, 'base64')).toString('latin1');
-      const j = inflated.indexOf('{');
-      if (j < 0) return;
-      const obj = JSON.parse(inflated.slice(j));
-      if (!obj || obj.cleanset === undefined) return;
-      // cleanset ist ein JSON-String: {"<raumId>":[Level,Wasser,Wdh,Reihenfolge,Modus,Route], ...}
-      const cs = typeof obj.cleanset === 'string' ? JSON.parse(obj.cleanset) : obj.cleanset;
-      if (!cs || typeof cs !== 'object') return;
-      const did = String(device.did);
-      let n = 0;
-      for (const [roomId, arr] of Object.entries(cs)) {
-        if (!Array.isArray(arr) || arr.length !== 6) continue;
-        await this._applyCleansetRoom(`${did}.map.`, 'cleanset', roomId, arr, 'Nachladen');
-        n++;
-      }
-      if (n) this.log.debug(`[CLEANSET] ${n} Raeume aus ${objName} uebernommen`);
+      await this._applyCleansetFromInflated(inflated, String(device.did), 'Nachladen', objName);
     } catch (e) {
       this.log.debug(`[CLEANSET] Nachladen von ${objName} fehlgeschlagen: ${(e && e.message) || e}`);
     }
+  }
+
+  /**
+   * Nimmt den ENTPACKTEN Inhalt eines Karten-Objekts und uebernimmt daraus die
+   * Raum-Einstellungen (Feld "cleanset") in die States.
+   *
+   * Getrennt vom Laden, weil derselbe Inhalt an zwei Stellen anfaellt:
+   *   - beim object_name-Push (App-Aenderung, siehe _loadCleansetFromObject)
+   *   - beim Adapterstart in getMap(), wo das Objekt ohnehin geladen wird
+   * Beim Start kommt naemlich kein Push — ohne das blieben Aenderungen, die waehrend
+   * der Adapter aus war gemacht wurden, unbemerkt.
+   */
+  async _applyCleansetFromInflated(inflated, did, quelle, objName = '') {
+    const j = inflated.indexOf('{');
+    if (j < 0) return 0;
+    let obj;
+    try {
+      obj = JSON.parse(inflated.slice(j));
+    } catch (e) {
+      return 0;
+    }
+    if (!obj || obj.cleanset === undefined) return 0;
+    // cleanset ist ein JSON-String: {"<raumId>":[Level,Wasser,Wdh,Reihenfolge,Modus,Route], ...}
+    const cs = typeof obj.cleanset === 'string' ? JSON.parse(obj.cleanset) : obj.cleanset;
+    if (!cs || typeof cs !== 'object') return 0;
+    let n = 0;
+    for (const [roomId, arr] of Object.entries(cs)) {
+      if (!Array.isArray(arr) || arr.length !== 6) continue;
+      await this._applyCleansetRoom(`${did}.map.`, 'cleanset', roomId, arr, quelle);
+      n++;
+    }
+    if (n) this.log.debug(`[CLEANSET] ${n} Raeume uebernommen (Quelle: ${quelle}${objName ? ', ' + objName : ''})`);
+    return n;
   }
 
   async getFile(url, device) {
