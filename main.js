@@ -2545,6 +2545,9 @@ class Dreame extends utils.Adapter {
       // Ohne dieses Objekt bleibt ein pausierter Waschgang haengen — der Button
       // start-washing sendet "in: []" und das Geraet nimmt es nicht als Fortsetzen.
       { id: 'resume-washing', name: 'Resume Mop Washing (4-4)', siid: 4, aiid: 4, in: [{ piid: 10, value: '1,1' }] },
+      // Laufenden Waschgang anhalten (HA pause_washing, device.py 5193-5216: "1,0").
+      // NICHT dasselbe wie stop (4-2) — der beendet den ganzen Auftrag.
+      { id: 'pause-washing', name: 'Pause Mop Washing (4-4)', siid: 4, aiid: 4, in: [{ piid: 10, value: '1,0' }] },
       { id: 'locate', name: 'Locate Robot (7-1)', siid: 7, aiid: 1, in: [] },
       { id: 'start-auto-empty', name: 'Start Auto Empty (15-1)', siid: 15, aiid: 1, in: [] },
       // Consumable resets
