@@ -3471,6 +3471,17 @@ class Dreame extends utils.Adapter {
             }
           }
           const device = this.deviceArray.find((d) => String(d.did) === did);
+          // TEST-SONDE (temporaer): jeden NEUEN object_name (siid 6-3) einmal pruefen, ob das
+          // dahinterliegende Objekt ein cleanset traegt. Throttle: nur bei Wechsel + max 1x/5s.
+          if (device && !this.isMower(device) && element.siid === 6 && element.piid === 3) {
+            const _obj = String(element.value || '');
+            const _now = Date.now();
+            if (_obj && _obj !== this._lastProbedObj && (!this._lastProbeTime || _now - this._lastProbeTime > 5000)) {
+              this._lastProbedObj = _obj;
+              this._lastProbeTime = _now;
+              this._probeObjectForCleanset(_obj, device).catch(() => {});
+            }
+          }
           if (this.isMower(device) && element.siid === 1 && element.piid === 4) {
             if (Array.isArray(element.value) && element.value.length >= 7) {
               const buf = Buffer.from(element.value);
@@ -5232,6 +5243,28 @@ class Dreame extends utils.Adapter {
       this.log.info('WiFi heatmap rendered: ' + width + 'x' + height + ' (scale ' + scale + ')');
     } catch (e) {
       this.log.warn('Error rendering WiFi heatmap: ' + e.message);
+    }
+  }
+
+  // TEST-SONDE (temporaer): laedt das Objekt hinter einem object_name (siid 6-3) und loggt,
+  // ob ein cleanset-Feld drin ist. Damit pruefen wir, ob das bei App-Aenderungen gepushte
+  // Objekt (z.B. .../1) die frischen Raum-Einstellungen traegt. Reines Logging.
+  async _probeObjectForCleanset(objName, device) {
+    try {
+      const url = await this.getFile(objName, device);
+      if (!url) { this.log.info(`[PROBE] ${objName}: keine Download-URL`); return; }
+      const res = await this.requestClient({
+        method: 'get',
+        headers: { Accept: '*/*', 'Accept-Language': 'de-de', Connection: 'keep-alive',
+          'User-Agent': 'Dreame_Smarthome/1043 CFNetwork/1240.0.4 Darwin/20.6.0' },
+        url,
+      });
+      const body = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
+      const hit = body.indexOf('cleanset');
+      this.log.info(`[PROBE] ${objName}: cleanset ${hit >= 0 ? 'GEFUNDEN' : 'nicht gefunden'} (${body.length} Zeichen)`);
+      if (hit >= 0) this.log.info(`[PROBE] Ausschnitt: ...${body.slice(Math.max(0, hit - 8), hit + 140)}...`);
+    } catch (e) {
+      this.log.info(`[PROBE] ${objName}: Fehler ${(e && e.message) || e}`);
     }
   }
 
