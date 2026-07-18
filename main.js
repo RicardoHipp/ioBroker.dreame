@@ -2540,6 +2540,11 @@ class Dreame extends utils.Adapter {
       // (boolean) angelegt, und dann geht immer "in: []" raus, also Waschen.
       { id: 'start-drying', name: 'Start Mop Drying (4-4)', siid: 4, aiid: 4, in: [{ piid: 10, value: '3,1' }] },
       { id: 'stop-drying', name: 'Stop Mop Drying (4-4)', siid: 4, aiid: 4, in: [{ piid: 10, value: '3,0' }] },
+      // Angehaltenen Waschgang fortsetzen. HA behandelt das getrennt vom Starten
+      // (device.py 5156-5166): bei washing_paused geht "1,1" raus, sonst "2,1".
+      // Ohne dieses Objekt bleibt ein pausierter Waschgang haengen — der Button
+      // start-washing sendet "in: []" und das Geraet nimmt es nicht als Fortsetzen.
+      { id: 'resume-washing', name: 'Resume Mop Washing (4-4)', siid: 4, aiid: 4, in: [{ piid: 10, value: '1,1' }] },
       { id: 'locate', name: 'Locate Robot (7-1)', siid: 7, aiid: 1, in: [] },
       { id: 'start-auto-empty', name: 'Start Auto Empty (15-1)', siid: 15, aiid: 1, in: [] },
       // Consumable resets
