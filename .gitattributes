@@ -1,0 +1,14 @@
+# Zeilenenden verbindlich festlegen — unabhaengig von core.autocrlf des jeweiligen
+# Rechners. Der Adapter laeuft auf Linux, LF ist dort die richtige Form; ausserdem
+# verhindert es Diffs, in denen nur die Zeilenenden umschlagen und echte Aenderungen
+# untergehen.
+* text=auto eol=lf
+
+# Binaerdateien niemals anfassen — eine Zeilenende-Umwandlung wuerde sie zerstoeren.
+# Git erkennt sie meist selbst am Inhalt, hier steht es zur Sicherheit ausdruecklich.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
