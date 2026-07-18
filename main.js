@@ -2533,6 +2533,13 @@ class Dreame extends utils.Adapter {
       { id: 'stop', name: 'Stop Cleaning (4-2)', siid: 4, aiid: 2, in: [] },
       { id: 'clear-warning', name: 'Clear Warning (4-3)', siid: 4, aiid: 3, in: [] },
       { id: 'start-washing', name: 'Start Mop Washing (4-4)', siid: 4, aiid: 4, in: [] },
+      // Trocknen hat KEINE eigene Aktion am Geraet: HA schickt dieselbe Aktion 4-4 und
+      // unterscheidet ueber ein Code-Paar in piid 10 (device.py 5133-5146,
+      // start_self_wash_base): "2,1" waschen, "3,1" trocknen an, "3,0" trocknen aus.
+      // Ohne diese Objekte laesst sich das Code-Paar nicht senden — 4-4 ist als Button
+      // (boolean) angelegt, und dann geht immer "in: []" raus, also Waschen.
+      { id: 'start-drying', name: 'Start Mop Drying (4-4)', siid: 4, aiid: 4, in: [{ piid: 10, value: '3,1' }] },
+      { id: 'stop-drying', name: 'Stop Mop Drying (4-4)', siid: 4, aiid: 4, in: [{ piid: 10, value: '3,0' }] },
       { id: 'locate', name: 'Locate Robot (7-1)', siid: 7, aiid: 1, in: [] },
       { id: 'start-auto-empty', name: 'Start Auto Empty (15-1)', siid: 15, aiid: 1, in: [] },
       // Consumable resets
