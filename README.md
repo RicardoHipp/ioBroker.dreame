@@ -2,24 +2,40 @@
 
 # ioBroker.dreame
 
-[![NPM version](https://img.shields.io/npm/v/iobroker.dreame.svg)](https://www.npmjs.com/package/iobroker.dreame)
-[![Downloads](https://img.shields.io/npm/dm/iobroker.dreame.svg)](https://www.npmjs.com/package/iobroker.dreame)
-![Number of Installations](https://iobroker.live/badges/dreame-installed.svg)
-![Current version in stable repository](https://iobroker.live/badges/dreame-stable.svg)
-
-[![NPM](https://nodei.co/npm/iobroker.dreame.png?downloads=true)](https://nodei.co/npm/iobroker.dreame/)
-
-**Tests:** ![Test and Release](https://github.com/TA2k/ioBroker.dreame/workflows/Test%20and%20Release/badge.svg)
-
-**This adapter uses Sentry libraries to automatically report exceptions and code errors to the developers.** For more details and for information how to disable the error reporting see [Sentry-Plugin Documentation](https://github.com/ioBroker/plugin-sentry#plugin-sentry)! Sentry reporting is used starting with js-controller 3.0.
-
-## dreame adapter for ioBroker
-
 Adapter for Dreame and MOVA robot vacuums and robot mowers.
 
 **Supported brands:** Dreame, MOVA (select in adapter settings)
 
-**Tested with:** L10, L20, X40, A2 1200 (Mower), MOVA 600, MOVA 1000
+> ### ⚠️ Only tested with a Dreame X40 Ultra
+>
+> This fork was developed and verified against a **single device: a Dreame X40
+> Ultra**. Everything described below — and the map in particular — is confirmed
+> to work on that model only.
+>
+> Other Dreame and MOVA models are likely to work, because the adapter reads the
+> device's own capabilities instead of assuming a fixed feature set. But none of
+> them could be tested. Expect rough edges, especially on models with hardware
+> the X40 does not have (roller mops, silver-ion modules, cameras) or on older
+> models without a laser scanner, which are not supported at all.
+>
+> If something does not work on your model, please open an issue and include the
+> model name — that is the only way these gaps get found.
+
+## About this fork
+
+This is a fork of [TA2k/ioBroker.dreame](https://github.com/TA2k/ioBroker.dreame)
+that focuses on the vacuum map: the adapter assembles the live map from the
+device's incremental updates and ships a self-contained map widget under `www/`
+(reachable at `http://<iobroker>:8082/dreame/`).
+
+The map handling is a port of the mapping code from
+[Tasshack/dreame-vacuum](https://github.com/Tasshack/dreame-vacuum), the Home
+Assistant integration for these robots. The robot and station images are taken
+from that project unchanged.
+
+- `AENDERUNGEN.md` — what this fork does differently, in plain language (German)
+- `PORT_STATUS.md` — which parts of the reference implementation are ported, and
+  where this adapter deviates
 
 ---
 
@@ -702,3 +718,21 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+### Third-party components
+
+This adapter bundles material from the following projects:
+
+**[dreame-vacuum](https://github.com/Tasshack/dreame-vacuum)** — map decoding and
+rendering logic, robot and station images (`www/icons.js`, `www/furniture/`).
+
+> MIT License — Copyright (c) 2022 Tasshack
+
+**[Lucide](https://lucide.dev)** — user interface icons (`www/icons_ui.js`).
+
+> ISC License — Copyright (c) for portions of Lucide are held by Cole Bemis
+> 2013-2022 as part of Feather (MIT). All other copyright (c) for Lucide are held
+> by Lucide Contributors 2022.
+
+Both licenses are permissive and compatible with the MIT license above. The full
+license texts are available in the respective projects.
