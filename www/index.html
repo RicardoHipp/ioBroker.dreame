@@ -56,7 +56,10 @@
   /* Die Spaltenbreite muss mit --ui wachsen: die Spalte selbst ist gezoomt, die Spur im
      Raster ist es nicht. Bliebe sie bei 250 px, waere der Inhalt bei 150 % abgeschnitten
      und die Seite bekaeme einen waagerechten Rollbalken. */
-  .body{flex:1; min-height:0; display:grid;
+  /* grid-template-rows:100% ist noetig, nicht schmueckend: ohne das richtet sich die Zeile
+     nach ihrem Inhalt. Eine Prozenthoehe darin ist dann unbestimmt, die Spalte faellt auf
+     ihre Inhaltshoehe zurueck und endet mitten im Bild. */
+  .body{flex:1; min-height:0; display:grid; grid-template-rows:100%;
     grid-template-columns:1fr calc(250px * var(--ui))}
   @media (max-width:720px){ .body{grid-template-columns:1fr} }
 
