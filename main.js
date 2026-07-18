@@ -3479,7 +3479,10 @@ class Dreame extends utils.Adapter {
           if (device && !this.isMower(device) && element.siid === 6 && element.piid === 3) {
             const _obj = String(element.value || '');
             const _st = this._deviceStatus(did);
-            const _laeuft = deviceStatusFlags(_st).started;
+            // Direkt nach dem Adapterstart ist der Eigenschaftsspeicher noch leer (taskStatus
+            // null); deviceStatusFlags meldet dann faelschlich "started" (taskStatus -1) und das
+            // Nachladen wuerde uebersprungen. Nur ueberspringen, wenn der Status bekannt IST.
+            const _laeuft = _st.taskStatus != null && deviceStatusFlags(_st).started;
             // NICHT nach object_name drosseln: der Name bleibt gleich (.../0), nur der Inhalt
             // dahinter aendert sich. HA laedt bei jedem Push (handle_properties). Hier nur eine
             // Zeit-Drossel gegen Push-Gewitter.
