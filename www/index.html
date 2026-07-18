@@ -75,11 +75,6 @@
   .stationhit{cursor:pointer}
   .trail{fill:none; stroke:#ffffff; stroke-width:1.1; stroke-linejoin:round;
     stroke-linecap:round; opacity:.85; pointer-events:none;}
-  .thit{stroke:transparent; stroke-width:2; pointer-events:stroke; cursor:pointer;}
-  #trailSel{stroke:#ff2d2d; stroke-width:3.5; fill:none; stroke-linecap:round; pointer-events:none;
-    filter:drop-shadow(0 0 1px #ff2d2d);}
-  .dbg{font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--panel);
-    border:1px solid var(--line); border-radius:10px; padding:10px; white-space:pre-wrap;}
   body.trail-off .trail{display:none}
   /* BEWUSST KEINE CSS-Transition auf dem Roboter-Icon: ein Uebergang auf `transform` schiebt
      das Icon in eine eigene GPU-Ebene. Die wird in Icon-Groesse (~4,5 SVG-Einheiten) gerastert
@@ -268,8 +263,6 @@
             <button class="abtn home" id="c-home" title="Home" aria-label="Zurück zur Ladestation"></button>
           </div>
         </div>
-        <h2>Debug · Spur</h2>
-        <div class="dbg" id="dbg">Klicke auf einen Spur-Abschnitt…</div>
         <h2 style="margin-top:18px">Status</h2>
         <div class="statusbox">
           <div class="stext" id="stateText">–</div>
@@ -457,7 +450,7 @@
   const stage=document.getElementById('stage'), wrap=document.getElementById('mapwrap');
   let W,He,GS,H,META,rooms,raw,mapStart,MAPW,MAPH;
   let robotMk=null, chargerMk=null, robotPos=null, chargerPos=null;
-  let trailEl=null, trailHit=null, trailSel=null, trailPts=[];
+  let trailEl=null, trailPts=[];
   let scale=1,tx=0,ty=0,minScale=1,box={x0:0,y0:0,x1:1,y1:1}, firstFit=true;
   const selectedRooms=new Set(); // per Klick gewählte Räume (Mehrfachauswahl, Klick toggelt)
   let SOCK=null;              // socket.io-Verbindung für Steuerbefehle
@@ -1680,11 +1673,8 @@
     drawZones();       // Sperrzonen / virtuelle Waende (wie HA)
     drawFurniture();   // Moebel (HA-Bilder)
     drawCurtains();    // Vorhaenge (Zickzack)
-    // gefahrene Spur (unter Labels/Marker): Klick-Segmente + sichtbare Linie + rote Auswahl
-    trailHit=document.createElementNS(NS,'g'); ov.appendChild(trailHit);
+    // gefahrene Spur (unter Labels/Marker)
     trailEl=document.createElementNS(NS,'path'); trailEl.setAttribute('class','trail'); ov.appendChild(trailEl);
-    trailSel=document.createElementNS(NS,'line'); trailSel.setAttribute('id','trailSel');
-    trailSel.style.display='none'; ov.appendChild(trailSel);
     renderTrail();
     // Raummarke: eine Gruppe je Raum, darin Name und (bei Auswahl) das Badge. Die Gruppe
     // sitzt am Raumschwerpunkt und wird gegen den Zoom skaliert — innen gilt Pixelmass.
@@ -1823,8 +1813,6 @@
         const sth = downT && downT.closest && downT.closest('.stationhit');
         if (sth) openStationMenu();
         else if (bdg) openRoomSettings(+bdg.dataset.raum);
-        else if(downT && downT.getAttribute && downT.getAttribute('class')==='thit')
-          selectSeg(+downT.getAttribute('data-i'));
         else { const seg=hitRoom(e.clientX,e.clientY); if(seg!=null) selectRoom(seg); }
       }
     });
@@ -2030,18 +2018,6 @@
       }
     }
     trailEl.setAttribute('d', d.trim());
-    const pts=trailPts;
-    if(trailHit){ trailHit.innerHTML='';
-      for(let i=0;i<pts.length-1;i++){
-        if(cum[i+1]>headDist) break;                // noch nicht gefahren -> nicht klickbar
-        if(noLine(pts[i+1])) continue; // Verbinder wird nicht gezeichnet -> nicht klickbar
-        const [x1,y1]=wS(pts[i].x,pts[i].y), [x2,y2]=wS(pts[i+1].x,pts[i+1].y);
-        const l=document.createElementNS(NS,'line'); l.setAttribute('class','thit'); l.setAttribute('data-i',i);
-        l.setAttribute('x1',x1.toFixed(1)); l.setAttribute('y1',y1.toFixed(1));
-        l.setAttribute('x2',x2.toFixed(1)); l.setAttribute('y2',y2.toFixed(1));
-        trailHit.appendChild(l);
-      }
-    }
   }
 
   /**
@@ -2201,23 +2177,6 @@
     if(t<1) glReq=requestAnimationFrame(glStep);
   }
   function stopGlide(){ if(glReq){ cancelAnimationFrame(glReq); glReq=null; } glFrom=null; glTo=null; }
-
-  function selectSeg(i){
-    const pts=trailPts; if(i<0||i>=pts.length-1) return;
-    const a=pts[i], b=pts[i+1];
-    const [x1,y1]=wS(a.x,a.y), [x2,y2]=wS(b.x,b.y);
-    trailSel.setAttribute('x1',x1); trailSel.setAttribute('y1',y1);
-    trailSel.setAttribute('x2',x2); trailSel.setAttribute('y2',y2); trailSel.style.display='inline';
-    const dist=Math.round(Math.hypot(b.x-a.x, b.y-a.y));
-    document.getElementById('dbg').textContent =
-      `Segment #${i} → #${i+1}\n`+
-      `op:    ${a.operator} → ${b.operator}\n`+
-      `von:   ${a.x}, ${a.y}\n`+
-      `nach:  ${b.x}, ${b.y}\n`+
-      `dist:  ${dist} mm\n`+
-      `type:  ${b.type}   mode: ${b.cleaningMode}\n`+
-      `strIdx:${b.stringIndex}  ptIdx:${b.pointIndex}`;
-  }
 
   // ===== Verbindung =====
   function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script');
