@@ -1,0 +1,95 @@
+# Änderungen gegenüber dem Original-Adapter
+
+Dieser Adapter ist ein Fork von [TA2k/ioBroker.dreame](https://github.com/TA2k/ioBroker.dreame).
+Hier steht in normaler Sprache, **was anders ist und was man davon hat** — nicht auf Code-Ebene.
+Technische Details zur Portierung stehen in `PORT_STATUS.md`.
+
+---
+
+## Karte
+
+### Die Karte zeigt jetzt alles, was der Roboter kennt
+**Vorher:** Die Karte zeigte im Wesentlichen Wände und Räume. Vieles, was der Roboter
+eigentlich mitschickt, wurde beim Einlesen verworfen.
+**Jetzt:** Möbel, Teppiche, Sperrzonen, Wischsperren, virtuelle Wände, Türen, Hindernisse,
+Raumnamen und Raumfarben werden gelesen und stehen zur Verfügung — dieselben Daten, die auch
+die Dreame-App und Home Assistant anzeigen.
+
+### Die Karte läuft live mit, statt zu ruckeln
+**Vorher:** Während der Reinigung kam nur ab und zu eine komplette neue Karte.
+**Jetzt:** Der Adapter setzt die kleinen Zwischen-Updates des Roboters laufend zusammen.
+Die Fahrspur wächst mit, die gereinigte Fläche füllt sich flüssig — wie in der App.
+
+### Die Fahrspur hinkt nicht mehr hinterher
+**Vorher:** Der Roboter war auf der Karte schon weiter, die Spur kam verzögert nach.
+**Jetzt:** Die aktuelle Position wird an die Spur angehängt, solange der Roboter fährt.
+Spur und Roboter passen zusammen.
+
+### Räume, die gerade nicht gereinigt werden, sind grau
+**Vorher:** Alle Räume sahen während einer Reinigung gleich aus.
+**Jetzt:** Nur die Räume des laufenden Auftrags sind farbig, der Rest ist grau — man sieht
+auf einen Blick, was der Roboter gerade abarbeitet. Nach Auftragsende werden alle wieder normal.
+
+### Sperrzonen, Möbel und Roboter sitzen pixelgenau
+**Vorher:** Sperrzonen und Möbel lagen ein bis zwei Pixel neben ihrer echten Position.
+**Jetzt:** Alles sitzt exakt so wie in der App und in Home Assistant.
+
+### Die Karte friert nicht mehr ein, wenn der Roboter steht
+**Vorher:** Sobald der Roboter in der Station stand, kamen keine Kartendaten mehr — der
+zuletzt gezeigte Zustand blieb hängen (z. B. blieben Räume grau, obwohl die Reinigung
+längst fertig war).
+**Jetzt:** Der Adapter merkt sich den Gerätezustand und zeichnet die Karte auch dann neu,
+wenn gerade keine neuen Kartendaten kommen.
+
+---
+
+## Bedienung / Fehler behoben
+
+### Schalter lassen sich endlich aus ioBroker heraus umlegen
+**Vorher:** Schalter wie „Benutzerdefinierte Reinigung" konnte man in ioBroker zwar
+umstellen, am Gerät passierte aber nichts — ohne Fehlermeldung.
+**Jetzt:** Sie werden im richtigen Format gesendet und greifen.
+*(Betrifft auch das Original; als Fehlerbericht formuliert.)*
+
+### Raum-Einstellungen landen im richtigen Raum
+**Vorher:** Änderte man die Einstellung eines Raums (Saugstärke, Wasser, Modus), wurde
+teilweise ein **anderer** Raum verstellt — z. B. Änderung an der Küche landete im Wohnzimmer.
+**Jetzt:** Die Einstellung geht an den Raum, den man auch gemeint hat.
+*(Betrifft auch das Original; als Fehlerbericht formuliert.)*
+
+---
+
+## Bekannte Einschränkungen
+
+### Ältere Roboter ohne Laser (VSLAM) werden nicht unterstützt
+Geräte, die per Kamera statt per Laser navigieren (z. B. Mijia 1C/1T, Dreame F9), werden
+von der Kartendarstellung dieses Forks **nicht** unterstützt. Statt einer falschen Karte
+kommt eine klare Fehlermeldung ins Log. Grund: Für diese Geräte fehlt uns ein Testgerät —
+blind gebaut würde es niemandem helfen.
+
+### „Wischen nach Saugen" geht nur für alle Räume gemeinsam
+Das ist keine Einschränkung des Adapters, sondern des Roboters: Pro Raum kann man nur
+Saugen, Wischen oder beides gleichzeitig wählen. „Erst alles saugen, dann alles wischen"
+ist ein Ablauf für die ganze Wohnung.
+
+---
+
+## In Arbeit
+
+- **Raum-Einstellungen automatisch aktuell halten:** Wenn man in der Dreame-App die
+  Einstellung eines Raums ändert, soll das sofort in ioBroker sichtbar sein.
+  *(Der Weg dahin ist gefunden und am Gerät bestätigt; der Einbau steht noch aus.)*
+- **Test-Hilfe im Code:** Eine temporäre Diagnose-Funktion (`[PROBE]`-Meldungen im Log)
+  ist noch drin und fliegt wieder raus.
+
+---
+
+## Hinweis für Einträge in dieser Datei
+
+Jeder neue Eintrag beschreibt **was der Nutzer merkt**, nicht wie es gebaut ist:
+- Überschrift = der Nutzen oder das behobene Ärgernis, in normaler Sprache
+- **Vorher:** / **Jetzt:** — was war das Problem, was ist jetzt anders
+- Fachbegriffe nur, wenn sie im ioBroker-Objektbaum wirklich so heißen
+
+Technische Details (welche HA-Funktion portiert wurde, welche Zeilen, was noch fehlt)
+gehören nach `PORT_STATUS.md`, nicht hierher.
