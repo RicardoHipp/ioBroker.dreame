@@ -3480,11 +3480,12 @@ class Dreame extends utils.Adapter {
             const _obj = String(element.value || '');
             const _st = this._deviceStatus(did);
             const _laeuft = deviceStatusFlags(_st).started;
-            // je object_name nur einmal laden (die letzten Slots merken)
-            if (!this._loadedCleansetObjs) this._loadedCleansetObjs = [];
-            if (_obj && !_laeuft && !this._loadedCleansetObjs.includes(_obj)) {
-              this._loadedCleansetObjs.push(_obj);
-              if (this._loadedCleansetObjs.length > 6) this._loadedCleansetObjs.shift();
+            // NICHT nach object_name drosseln: der Name bleibt gleich (.../0), nur der Inhalt
+            // dahinter aendert sich. HA laedt bei jedem Push (handle_properties). Hier nur eine
+            // Zeit-Drossel gegen Push-Gewitter.
+            const _now = Date.now();
+            if (_obj && !_laeuft && (!this._lastCleansetLoad || _now - this._lastCleansetLoad > 5000)) {
+              this._lastCleansetLoad = _now;
               this._loadCleansetFromObject(_obj, device).catch(() => {});
             }
           }
