@@ -9,10 +9,13 @@
     --bg:#0f1420; --panel:#171e2e; --panel2:#1d2740; --line:#2a3550;
     --txt:#e6ecf7; --muted:#8ea0c0; --accent:#2bb4e2;
     --robot:#ff5c7a; --charger:#38e29b; --map-bg:#0c1020;
+    /* Ampel fuer Verbrauchsmaterial und Meldungen */
+    --ok:#38e29b; --warn:#e0a33a; --bad:#ff5c7a;
   }
   @media (prefers-color-scheme: light){
     :root{ --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
-           --txt:#1a2436; --muted:#5a6b88; --map-bg:#eaf0f8; }
+           --txt:#1a2436; --muted:#5a6b88; --map-bg:#eaf0f8;
+           --ok:#1a9e6b; --warn:#b57611; --bad:#d92f52; }
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
@@ -120,6 +123,35 @@
     padding:10px 12px;margin-bottom:10px}
   .statusbox .stext{font-size:15px;font-weight:800}
   .statusbox .ssub{font-size:12px;opacity:.75;margin-top:3px}
+  .statusbox .ssub .ico{vertical-align:-3px;margin-right:3px}
+  /* Meldungen (volle Tanks, Fehler ...). Der Kasten ist leer und ausgeblendet, solange
+     nichts anliegt — keine Liste gruener Haken, die man erst lesen muss. */
+  .warnbox{background:var(--panel);border:1px solid var(--warn,#e0a33a);border-radius:10px;
+    padding:8px 10px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px}
+  .warnbox .wrow{display:flex;align-items:center;gap:8px;font-size:12.5px;line-height:1.35}
+  .warnbox .wrow .ico{flex:none;color:var(--warn,#e0a33a)}
+  .warnbox .wrow.bad .ico{color:var(--bad,#ff5c7a)}
+  /* Verbrauchsmaterial: Icon, Name, Balken. Prozent steht im Balken, keine Stunden. */
+  .verbrauch{display:flex;flex-direction:column;gap:8px}
+  .vrow{display:flex;align-items:center;gap:9px;font-size:12.5px}
+  .vrow .ico{flex:none;opacity:.8}
+  .vrow .vname{flex:none;width:88px}
+  .vbar{flex:1;height:8px;border-radius:5px;background:var(--line);overflow:hidden}
+  .vbar i{display:block;height:100%;border-radius:5px;background:var(--ok,#38e29b)}
+  .vrow.warn .vbar i{background:var(--warn,#e0a33a)}
+  .vrow.bad  .vbar i{background:var(--bad,#ff5c7a)}
+  .vpct{flex:none;width:34px;text-align:right;font-variant-numeric:tabular-nums;opacity:.8}
+  /* Statistik: zugeklappt, weil sie selten gebraucht wird */
+  .stats{margin-top:14px}
+  .stats summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;
+    font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+  .stats summary::-webkit-details-marker{display:none}
+  .stats summary .sumtext{flex:1}
+  .stats summary .ico{transition:transform .15s}
+  .stats[open] summary .ico.chev{transform:rotate(180deg)}
+  .statlist{display:flex;flex-direction:column;gap:5px;margin-top:8px;font-size:12.5px}
+  .statlist div{display:flex;justify-content:space-between;gap:10px}
+  .statlist span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
   .clean{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
   .selroom{font-weight:800;font-size:14px;color:var(--accent,#4a78e0)}
   /* Auswahl-Zeile: tippt man drauf, oeffnet sich ein Overlay mit den Optionen.
@@ -192,12 +224,6 @@
   .abtn.stop{background:#e0554a}
   .abtn.home{background:#4a78e0}
   .abtn:disabled{opacity:.35;cursor:not-allowed}
-  .chip{display:flex;align-items:center;gap:10px;padding:9px 11px;margin-bottom:9px;
-    background:var(--panel);border:1px solid var(--line);border-radius:12px}
-  .chip .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
-    font-size:14px;flex:none}
-  .chip .k{font-size:11px;color:var(--muted)}
-  .chip .v{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
   #err{color:#ff8098;font-size:12px;white-space:pre-wrap}
 </style>
 </head>
@@ -268,10 +294,14 @@
           <div class="stext" id="stateText">–</div>
           <div class="ssub" id="stateSub">–</div>
         </div>
-        <div class="chip"><div class="ic" style="background:rgba(255,92,122,.15);color:var(--robot)">🤖</div>
-          <div><div class="k">Roboter</div><div class="v" id="v-robot">–</div></div></div>
-        <div class="chip"><div class="ic" style="background:rgba(56,226,155,.15);color:var(--charger)">🔌</div>
-          <div><div class="k">Ladestation</div><div class="v" id="v-charger">–</div></div></div>
+        <!-- Meldungen: nur sichtbar, wenn wirklich etwas anliegt (s. updateInfo) -->
+        <div class="warnbox" id="warnBox" hidden></div>
+        <h2 style="margin-top:18px" id="verbrauchTitel" hidden>Verbrauchsmaterial</h2>
+        <div class="verbrauch" id="verbrauch"></div>
+        <details class="stats" id="statsBox" hidden>
+          <summary><span class="sumtext">Statistik</span></summary>
+          <div class="statlist" id="statList"></div>
+        </details>
         <div id="err"></div>
       </div>
     </div>
@@ -981,6 +1011,10 @@
     for (const pv of document.querySelectorAll('.pickrow .pv')){
       pv.insertAdjacentHTML('beforeend', uiIcon('weiter', 16, 'chev'));
     }
+    // Statistik-Kopfzeile: Symbol davor, Klapp-Pfeil dahinter (dreht sich per CSS)
+    const sum = document.querySelector('.stats summary');
+    if (sum){ sum.insertAdjacentHTML('afterbegin', uiIcon('statistik',14));
+              sum.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev')); }
   }
   function setupCleanPanel(){
     const suction=document.getElementById('suction'), sVal=document.getElementById('suctionVal');
@@ -1434,7 +1468,9 @@
     if (!t) return;
     t.textContent = (VST.state!=null && STATE_DE[VST.state]) ? STATE_DE[VST.state] : (VST.state!=null ? 'Status '+VST.state : '–');
     const parts=[];
-    if (VST.battery!=null) parts.push('🔋 '+VST.battery+' %');
+    // Akku mit Icon (Ladestecker, wenn er gerade laedt) statt eines Emojis
+    if (VST.battery!=null)
+      parts.push(uiIcon(VST.charging===1?'akkuLaedt':'akku',13) + VST.battery+' %');
     const cleaningLike=[1,7,12,21,25,27,37,38,101,102].includes(VST.state);
     if (cleaningLike){
       if (VST.cprog>0) parts.push(VST.cprog+' %');
@@ -1442,7 +1478,73 @@
       if (VST.ctime>0) parts.push(VST.ctime+' min');
     }
     if ((VST.state===8 || VST.state===35) && VST.dprog>0) parts.push('Trocknung '+VST.dprog+' %');
-    s.textContent = parts.length ? parts.join(' · ') : '–';
+    s.innerHTML = parts.length ? parts.join(' · ') : '–';
+  }
+
+  // ===== Verbrauchsmaterial, Meldungen, Statistik =====
+  //
+  // Bewusst als Tabelle und nicht fest verdrahtet: der Adapter legt nur die Objekte an,
+  // die der jeweilige Roboter meldet. Ein Geraet mit Wischwalze oder Silberionen-Modul
+  // bekommt hier automatisch seine eigenen Zeilen, ohne dass wir nachbessern muessen —
+  // gebaut wird nur, was INFO.hat[...] beim Verbinden als vorhanden gemeldet hat.
+  //
+  // Namen wie in HA (sensor.py / const.py), Reihenfolge nach Wechselhaeufigkeit.
+  const VERBRAUCH = [
+    { obj:'main-brush-left',   name:'Hauptbürste',  ikon:'hauptbuerste' },
+    { obj:'side-brush-left',   name:'Seitenbürste', ikon:'seitenbuerste' },
+    { obj:'filter-left',       name:'Filter',       ikon:'filter' },
+    { obj:'sensor-dirty-left', name:'Sensoren',     ikon:'sensoren' },
+    { obj:'mop-pad-left',      name:'Wischtuch',    ikon:'wischtuch' },
+    { obj:'detergent-left',    name:'Reinigungsm.', ikon:'mittel' },
+    { obj:'silver-ion-left',   name:'Silberionen',  ikon:'mittel' },
+    { obj:'squeegee-left',     name:'Abstreifer',   ikon:'wischtuch' },
+    { obj:'tank-filter-left',  name:'Tankfilter',   ikon:'filter' },
+    { obj:'wheel-dirty-left',  name:'Räder',        ikon:'raeder' },
+  ];
+  // Meldungen. `bei` entscheidet aus dem Rohwert, ob etwas anliegt; `schwer` faerbt rot
+  // statt gelb. Alle diese Objekte sind 0 = in Ordnung, ausser wo anders vermerkt.
+  const MELDUNGEN = [
+    { obj:'error',                    text:v=>'Fehler '+v,                bei:v=>v>0, schwer:true },
+    { obj:'clean-water-tank-status',  text:()=>'Frischwassertank prüfen', bei:v=>v>0 },
+    { obj:'dirty-water-tank-status',  text:()=>'Schmutzwassertank leeren',bei:v=>v>0 },
+    { obj:'low-water-warning',        text:()=>'Wenig Wasser',            bei:v=>v>0 },
+    { obj:'dust-bag-status',          text:()=>'Staubbeutel voll',        bei:v=>v>0 },
+    { obj:'detergent-status',         text:()=>'Reinigungsmittel leer',   bei:v=>v>0 },
+  ];
+  const STATISTIK = [
+    { obj:'cleaning-count',      name:'Reinigungen', fmt:v=>String(v) },
+    { obj:'total-cleaned-area',  name:'Fläche',      fmt:v=>v.toLocaleString('de-DE')+' m²' },
+    { obj:'total-cleaning-time', name:'Dauer',       fmt:v=>Math.round(v/60).toLocaleString('de-DE')+' h' },
+    { obj:'first-cleaning-date', name:'Seit',        fmt:v=>new Date(v*1000).toLocaleDateString('de-DE') },
+  ];
+  const INFO = { hat:{}, wert:{} };   // hat: Objekt existiert; wert: letzter Wert
+
+  function updateInfo(){
+    // --- Meldungen ---
+    const wb = document.getElementById('warnBox'); if (!wb) return;
+    const zeilen = MELDUNGEN
+      .filter(m => INFO.hat[m.obj] && INFO.wert[m.obj]!=null && m.bei(INFO.wert[m.obj]))
+      .map(m => `<div class="wrow${m.schwer?' bad':''}">${uiIcon('warnung',15)}`
+              + `<span>${m.text(INFO.wert[m.obj])}</span></div>`);
+    wb.innerHTML = zeilen.join('');
+    wb.hidden = !zeilen.length;
+
+    // --- Verbrauchsmaterial ---
+    const vb = document.getElementById('verbrauch');
+    vb.innerHTML = VERBRAUCH.filter(v => INFO.hat[v.obj]).map(v => {
+      const p = Math.max(0, Math.min(100, Number(INFO.wert[v.obj]) || 0));
+      const st = p<=10 ? 'bad' : (p<=20 ? 'warn' : '');
+      return `<div class="vrow ${st}">${uiIcon(v.ikon,15)}<span class="vname">${v.name}</span>`
+           + `<span class="vbar"><i style="width:${p}%"></i></span>`
+           + `<span class="vpct">${p} %</span></div>`;
+    }).join('');
+    document.getElementById('verbrauchTitel').hidden = !vb.innerHTML;
+
+    // --- Statistik ---
+    const sl = document.getElementById('statList');
+    sl.innerHTML = STATISTIK.filter(s => INFO.hat[s.obj] && INFO.wert[s.obj]!=null)
+      .map(s => `<div><span>${s.name}</span><span>${s.fmt(Number(INFO.wert[s.obj]))}</span></div>`).join('');
+    document.getElementById('statsBox').hidden = !sl.innerHTML;
   }
   // Badge-Bild in einer Icon-Gruppe setzen/entfernen (pos: 'behind'=Kreis hinter dem Icon,
   // 'corner'=klein daneben, 'above'=ueber dem Icon — wie HAs Platzierungen)
@@ -1878,7 +1980,6 @@
 
   // ---- Live-Updates einzelner Werte ----
   function updateRobot(pos){ robotPos=pos;
-    document.getElementById('v-robot').textContent = pos?`${pos[0]}, ${pos[1]}`:'–';
     if (pos && !robotMk) robotMk = iconMarker(pos[0],pos[1],ICON.ROBOT,ICON_SIZE.robot,'robot-mk','ROBOT');
     // Faehrt der Abspielkopf gerade eine Spur ab, fuehrt er den Marker — hier nicht
     // eingreifen, sonst zerren zwei Quellen daran.
@@ -1892,7 +1993,6 @@
     }
   }
   function updateCharger(pos){ chargerPos=pos;
-    document.getElementById('v-charger').textContent = pos?`${pos[0]}, ${pos[1]}`:'–';
     if (chargerMk && pos) moveIcon(chargerMk,pos[0],pos[1],ICON_SIZE.charger);
     else if (pos && !chargerMk) chargerMk = iconMarker(pos[0],pos[1],ICON.CHARGER,ICON_SIZE.charger);
   }
@@ -2257,6 +2357,24 @@
         sock.emit('subscribe', CUST_ID);
         updateCleanPanel();
 
+        // ---- Verbrauchsmaterial / Meldungen / Statistik ----
+        // Was es nicht gibt, liefert null zurueck und wird gar nicht erst angezeigt.
+        const INFO_PRE = `dreame.0.${DID}.status.`;
+        for (const e of [...VERBRAUCH, ...MELDUNGEN, ...STATISTIK]){
+          const v = await sGet(sock, INFO_PRE + e.obj);
+          if (v == null) continue;
+          INFO.hat[e.obj] = true; INFO.wert[e.obj] = v;
+          sock.emit('subscribe', INFO_PRE + e.obj);
+        }
+        // Sonderfall Raeder: unser X40 meldet Rest UND Reststunden dauerhaft als 0. Ob das
+        // "faellig" oder "kennt das Geraet nicht" heisst, laesst sich aus den Daten nicht
+        // unterscheiden — HA setzt beim Zuruecksetzen 100 % / 30 h, ein echter Wert waere
+        // also nie dauerhaft 0/0. Deshalb hier ausblenden statt dauerhaft rot zu warnen.
+        if (INFO.hat['wheel-dirty-left'] && !Number(INFO.wert['wheel-dirty-left'])
+            && !Number(await sGet(sock, INFO_PRE + 'wheel-dirty-time-left')))
+          delete INFO.hat['wheel-dirty-left'];
+        updateInfo();
+
         sock.on('stateChange', (id, st)=>{ if(!st) return;
           if (id===IDS.robot)   updateRobot(parsePt(st.val));
           else if (id===IDS.charger) updateCharger(parsePt(st.val));
@@ -2265,6 +2383,9 @@
           else if (CS_RE.test(id)){
             const rid = id.match(CS_RE)[1];
             if (typeof st.val === 'string'){ try { roomCleanset[rid] = JSON.parse(st.val); updateCleanPanel(); } catch(e){} }
+          }
+          else if (id.startsWith(INFO_PRE) && INFO.hat[id.slice(INFO_PRE.length)]){
+            INFO.wert[id.slice(INFO_PRE.length)] = st.val; updateInfo();
           }
           else { const k=SKEYS.find(kk=>IDS[kk]===id); if(k) setVst(k, st.val); }
         });

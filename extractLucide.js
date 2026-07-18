@@ -27,6 +27,22 @@ const AUS_LUCIDE = {
   anAus:         'Circle',        // Ansicht-Schalter aus (vorher '●' in Grau)
   wasser:        'Droplet',       // Badge: Wassermenge
   wiederholung:  'Repeat',        // Badge: nur wenn > 1
+  // --- Zustandsleiste / Verbrauchsmaterial / Behaelter ---
+  akku:          'Battery',
+  akkuLaedt:     'BatteryCharging',
+  hauptbuerste:  'Brush',
+  seitenbuerste: 'Fan',           // Sternbuerste, die sich dreht
+  filter:        'Filter',
+  sensoren:      'Radar',
+  raeder:        'CircleDot',
+  frischwasser:  'GlassWater',
+  schmutzwasser: 'Droplets',
+  staubbeutel:   'Trash2',
+  mittel:        'FlaskConical',  // Reinigungsmittel
+  wischtuch:     'Waves',
+  warnung:       'TriangleAlert',
+  statistik:     'ChartColumn',
+  aufklappen:    'ChevronDown',
 };
 
 // Eigene Ableitung: Lucides AirVent zeigt Luft, die AUSstroemt — die beiden Wirbel enden

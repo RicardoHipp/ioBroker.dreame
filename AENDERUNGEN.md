@@ -78,6 +78,23 @@ teilweise ein **anderer** Raum verstellt — z. B. Änderung an der Küche lande
 **Jetzt:** Die Einstellung geht an den Raum, den man auch gemeint hat.
 *(Betrifft auch das Original; als Fehlerbericht formuliert.)*
 
+### Verbrauchsmaterial und Meldungen stehen neben der Karte
+**Vorher:** Rechts standen nur die Koordinaten von Roboter und Ladestation — Zahlen, die
+im Alltag niemand braucht.
+**Jetzt:** Dort steht, wie viel von Hauptbürste, Seitenbürste, Filter und Sensoren noch
+übrig ist, als Balken mit Prozentwert. Unter 20 % wird der Balken gelb, unter 10 % rot —
+man sieht also im Vorbeigehen, was demnächst fällig ist.
+
+Darüber erscheinen Meldungen, aber **nur wenn wirklich etwas anliegt**: voller
+Schmutzwassertank, leerer Frischwassertank, voller Staubbeutel, fehlendes Reinigungsmittel,
+Gerätefehler. Ist alles in Ordnung, sieht man dort nichts.
+
+Ganz unten lässt sich die Statistik aufklappen: Anzahl der Reinigungen, gesamte Fläche,
+gesamte Dauer und das Datum der ersten Reinigung.
+
+Angezeigt wird immer nur das, was der eigene Roboter auch meldet. Geräte mit Wischwalze,
+Silberionen-Modul oder Abstreifer bekommen ihre Zeilen automatisch dazu.
+
 ### Die Zoom-Knöpfe auf der Karte reagieren
 **Vorher:** Die drei Knöpfe unten rechts (+, −, Ansicht zurücksetzen) taten nichts.
 Zoomen ging nur mit dem Mausrad, und die Ansicht ließ sich gar nicht zurücksetzen.
