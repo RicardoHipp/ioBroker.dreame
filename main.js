@@ -3475,10 +3475,12 @@ class Dreame extends utils.Adapter {
           // dahinterliegende Objekt ein cleanset traegt. Throttle: nur bei Wechsel + max 1x/5s.
           if (device && !this.isMower(device) && element.siid === 6 && element.piid === 3) {
             const _obj = String(element.value || '');
-            const _now = Date.now();
-            if (_obj && _obj !== this._lastProbedObj && (!this._lastProbeTime || _now - this._lastProbeTime > 5000)) {
-              this._lastProbedObj = _obj;
-              this._lastProbeTime = _now;
+            // Throttle NUR pro object_name: jeder unterschiedliche Slot wird einmal geprueft
+            // (damit .../1 nach .../0 nicht verschluckt wird). Merkt sich die letzten 5 Slots.
+            if (!this._probedObjs) this._probedObjs = [];
+            if (_obj && !this._probedObjs.includes(_obj)) {
+              this._probedObjs.push(_obj);
+              if (this._probedObjs.length > 6) this._probedObjs.shift();
               this._probeObjectForCleanset(_obj, device).catch(() => {});
             }
           }
@@ -5259,10 +5261,34 @@ class Dreame extends utils.Adapter {
           'User-Agent': 'Dreame_Smarthome/1043 CFNetwork/1240.0.4 Darwin/20.6.0' },
         url,
       });
-      const body = typeof res.data === 'string' ? res.data : JSON.stringify(res.data);
-      const hit = body.indexOf('cleanset');
-      this.log.info(`[PROBE] ${objName}: cleanset ${hit >= 0 ? 'GEFUNDEN' : 'nicht gefunden'} (${body.length} Zeichen)`);
-      if (hit >= 0) this.log.info(`[PROBE] Ausschnitt: ...${body.slice(Math.max(0, hit - 8), hit + 140)}...`);
+      const data = res.data;
+      const raw = typeof data === 'string' ? data : JSON.stringify(data);
+      this.log.info(`[PROBE] ${objName}: geladen (${raw.length} Zeichen), Top-Keys: ${
+        typeof data === 'object' && data ? Object.keys(data).join(',') : '(String)'}`);
+      // Karten-String extrahieren + dekomprimieren, dann dort nach cleanset suchen
+      let ms = null;
+      try {
+        const obj = typeof data === 'object' ? data : JSON.parse(raw);
+        if (obj && obj.mapstr && obj.mapstr[0]) ms = obj.mapstr[0].map;
+        else if (obj && Array.isArray(obj) && obj[0] && obj[0].info) ms = obj[0].info[0] && obj[0].info[0].map;
+      } catch (e2) { /* kein JSON */ }
+      if (ms) {
+        let b64 = String(ms);
+        const ci = b64.indexOf(',');
+        if (ci > 100) b64 = b64.slice(0, ci); // evtl. Thumbnail,Karte
+        b64 = b64.replace(/-/g, '+').replace(/_/g, '/');
+        const zlib = require('zlib');
+        const inflated = zlib.inflateSync(Buffer.from(b64, 'base64')).toString('latin1');
+        const j = inflated.indexOf('{', 27);
+        const keys = j >= 0 ? inflated.slice(j, j + 220) : '(kein JSON-Teil)';
+        const hit = inflated.indexOf('cleanset');
+        this.log.info(`[PROBE] ${objName}: mapstr entpackt (${inflated.length} B). cleanset ${
+          hit >= 0 ? 'GEFUNDEN' : 'NICHT drin'}. JSON-Anfang: ${keys}`);
+        if (hit >= 0) this.log.info(`[PROBE] cleanset-Ausschnitt: ...${inflated.slice(hit, hit + 160)}...`);
+      } else {
+        const hit = raw.indexOf('cleanset');
+        this.log.info(`[PROBE] ${objName}: kein mapstr. cleanset im Rohtext ${hit >= 0 ? 'GEFUNDEN' : 'nicht'}. Anfang: ${raw.slice(0, 200)}`);
+      }
     } catch (e) {
       this.log.info(`[PROBE] ${objName}: Fehler ${(e && e.message) || e}`);
     }
