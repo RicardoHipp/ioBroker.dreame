@@ -11,6 +11,9 @@
     --robot:#ff5c7a; --charger:#38e29b; --map-bg:#0c1020;
     /* Ampel fuer Verbrauchsmaterial und Meldungen */
     --ok:#38e29b; --warn:#e0a33a; --bad:#ff5c7a;
+    /* Anzeigegroesse der Bedienflaechen (Zahnrad-Menue). Bewusst NICHT auf die Karte:
+       die zoomt man selbst, und sie soll beim Laden ganz zu sehen sein. */
+    --ui:1;
   }
   @media (prefers-color-scheme: light){
     :root{ --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
@@ -24,8 +27,11 @@
   /* Kein eigener Rahmen, keine Breitenbegrenzung: laeuft spaeter im iframe bzw. im
      HTML-Widget, dessen Rahmen sonst doppelt waere. Immer die volle Flaeche nutzen. */
   .app{width:100%; min-height:100%; background:var(--panel); overflow:hidden;}
+  /* zoom (nicht transform:scale): zoom rechnet die neue Groesse in den Seitenaufbau ein,
+     die Spalte wird also wirklich breiter und die Karte entsprechend schmaler. transform
+     wuerde nur groesser malen und ueber die Karte hinausragen. */
   .head{display:flex; align-items:center; gap:12px; padding:16px 20px;
-    border-bottom:1px solid var(--line);
+    border-bottom:1px solid var(--line); zoom:var(--ui);
     background:linear-gradient(180deg,var(--panel2),transparent);}
   .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);
     box-shadow:0 0 12px var(--accent)}
@@ -86,15 +92,18 @@
      inklusive der Schlussdrehung — eine Transition waere doppelt gemoppelt. */
 
   .zoom{position:absolute; right:14px; bottom:14px; display:flex; flex-direction:column;
-    gap:6px; z-index:5}
+    gap:6px; z-index:5; zoom:var(--ui)}
   .zoom button{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
     background:var(--panel);color:var(--txt);font-size:18px;line-height:1;cursor:pointer;
     display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.22)}
   .zoom button:hover{border-color:var(--accent)}
   .zoom button:active{transform:scale(.92);background:var(--panel2)}
 
+  /* Die Hoehe muss durch --ui geteilt werden: innerhalb eines gezoomten Elements zaehlen
+     eigene Pixel, 72vh waeren sonst am Ende 72vh * --ui echte Pixel und die Spalte stuende
+     unten ueber die Karte hinaus. */
   .side{border-left:1px solid var(--line); padding:16px; background:var(--panel2);
-    max-height:calc(72vh + 42px); overflow-y:auto}
+    zoom:var(--ui); max-height:calc((72vh + 42px) / var(--ui)); overflow-y:auto}
   @media (max-width:720px){ .side{border-left:none;border-top:1px solid var(--line);max-height:none} }
   .side h2{font-size:11px;text-transform:uppercase;letter-spacing:1px;
     color:var(--muted);margin:0 0 12px}
@@ -170,8 +179,11 @@
     background:rgba(0,0,0,.45)}
   .ovl.open{display:flex}
   @media (min-width:600px){ .ovl{align-items:center} }
+  /* nur der Kasten wird gezoomt, nicht .ovl selbst: das liegt mit inset:0 am Viewport,
+     ein Zoom darauf wuerde die Abdunklung verschieben statt den Inhalt zu vergroessern */
   .ovlbox{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);
-    border-radius:16px 16px 0 0;padding:16px;box-shadow:0 -8px 40px rgba(0,0,0,.35)}
+    border-radius:16px 16px 0 0;padding:16px;box-shadow:0 -8px 40px rgba(0,0,0,.35);
+    zoom:var(--ui); max-height:calc(90vh / var(--ui)); overflow-y:auto}
   @media (min-width:600px){ .ovlbox{border-radius:16px} }
   .ovlbox h3{margin:0 0 12px;font-size:15px;font-weight:800}
   .opt{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;
@@ -243,7 +255,11 @@
             <button class="tgl" id="t-smooth" title="An: Roboter fährt die Strecke flüssig ab, hinkt der gemeldeten Position dafür bis zu einem Paket (~3 s) hinterher. Aus: springt alle ~3 s exakt auf die gemeldete Position.">Flüssig</button>
             <button class="tgl off" id="t-grid" title="Diagnose: Gitternetz auf den Zellgrenzen + Fadenkreuze an bekannten Weltkoordinaten. Zeigt, ob das Overlay auf den Kartenpixeln sitzt.">Raster</button>
           </div>
-          <h2>Räume</h2>
+          <div class="pickrow" id="uiRow">
+            <span class="pk">Anzeigegröße</span>
+            <span class="pv"><span id="uiVal">100 %</span></span>
+          </div>
+          <h2 style="margin-top:16px">Räume</h2>
           <div class="roomlist" id="roomList"></div>
         </div>
       </div>
@@ -364,6 +380,25 @@
     });
   }
   if (DID) baueIds();
+
+  // ---- Anzeigegroesse der Bedienflaechen ----
+  // Bewusst im Browser gemerkt und nicht im Adapter: das Tablett braucht eine andere
+  // Groesse als der Rechner am Schreibtisch. Die Einstellung gehoert also zum Geraet.
+  const UI_STUFEN = [1, 1.25, 1.5, 1.75, 2];
+  let uiFaktor = 1;
+  try { const g = parseFloat(localStorage.getItem('dreame.ui'));
+        if (UI_STUFEN.includes(g)) uiFaktor = g; } catch (e) {}
+  function setzeUi(f, merken){
+    uiFaktor = f;
+    document.documentElement.style.setProperty('--ui', String(f));
+    const v = document.getElementById('uiVal');
+    if (v) v.textContent = Math.round(f*100) + ' %';
+    if (merken) { try { localStorage.setItem('dreame.ui', String(f)); } catch (e) {} }
+    // Die Karte hat jetzt anders viel Platz — Ausschnitt neu einpassen, Marken nachziehen.
+    // Beim ersten Aufruf steht die Karte noch nicht; das faengt der Versuch ab.
+    try { if (stage && stage.clientWidth){ fitVisible(); skaliereMarken(true); } }
+    catch (e) {}
+  }
   // Deutsche Zustands-Texte (S2P1 state). Grundlage war der dreamehome-Adapter; gegen HAs
   // DreameVacuumState (types.py 374-447) geprueft und korrigiert:
   //   4   hiess "Pausiert" — ist aber ERROR. Eine Stoerung sah dadurch aus wie eine Pause.
@@ -763,12 +798,14 @@
   /**
    * Haelt Name und Badge in konstanter Bildschirmgroesse. Eine SVG-Einheit ist cell*scale
    * Bildschirmpixel — mit dem Kehrwert skaliert, entspricht innen 1 Einheit 1 Pixel.
+   * uiFaktor legt sich als reine Vergroesserung darueber: unabhaengig vom Kartenzoom,
+   * aber insgesamt groesser (inkl. der 44-Pixel-Tippflaeche).
    */
-  let markScale = null;
+  let markScale = null, markUi = null;
   function skaliereMarken(erzwingen){
-    if (!erzwingen && markScale === scale) return;
-    markScale = scale;
-    const s = 1 / (cell * scale);
+    if (!erzwingen && markScale === scale && markUi === uiFaktor) return;
+    markScale = scale; markUi = uiFaktor;
+    const s = uiFaktor / (cell * scale);
     for (const id of Object.keys(markEls)){
       const g = markEls[id];
       g.setAttribute('transform', `translate(${g.dataset.x} ${g.dataset.y}) scale(${s})`);
@@ -1925,6 +1962,10 @@
     window.addEventListener('resize', ()=>{ box=visibleBox(); clamp(); applyT(); });
     function setupToggle(btnId, cls){ const b=document.getElementById(btnId);
       b.addEventListener('click', ()=>{ const o=document.body.classList.toggle(cls); b.classList.toggle('off',o); }); }
+    // Anzeigegroesse (Zahnrad-Menue). Der Kartenzoom bleibt davon unberuehrt.
+    document.getElementById('uiRow').onclick = ()=> openPicker('Anzeigegröße',
+      UI_STUFEN.map(f=>({ id:f, name:Math.round(f*100)+' %' })),
+      uiFaktor, (f)=> setzeUi(f, true));
     setupToggle('t-trail','trail-off');
     // "Änderungen": kein CSS-Toggle, sondern Neuzeichnen (rot = seit Schnappschuss geändert)
     document.getElementById('t-changes').addEventListener('click', () => {
@@ -2309,6 +2350,7 @@
   (async ()=>{
     try {
       setzeIcons();
+      setzeUi(uiFaktor, false);   // gemerkte Groesse anwenden und beschriften
       setupCleanPanel();
       if (!IOB){
         errEl.textContent = 'Kein ioBroker-Server bekannt.\n\n'

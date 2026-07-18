@@ -78,6 +78,19 @@ teilweise ein **anderer** Raum verstellt — z. B. Änderung an der Küche lande
 **Jetzt:** Die Einstellung geht an den Raum, den man auch gemeint hat.
 *(Betrifft auch das Original; als Fehlerbericht formuliert.)*
 
+### Die Bedienung lässt sich größer stellen
+**Vorher:** Menü, Regler und die Beschriftungen auf der Karte hatten eine feste Größe.
+Auf einem Tablett an der Wand war das zu klein zum Treffen.
+**Jetzt:** Im Zahnrad-Menü gibt es **Anzeigegröße** mit den Stufen 100 bis 200 %. Größer
+werden die rechte Spalte, die Kopfzeile, die Dialoge und die Beschriftungen an den Räumen —
+samt der Flächen, auf die man tippt.
+
+Die Karte selbst bleibt davon unberührt: die zoomt man weiter mit den Fingern, und beim
+Öffnen ist sie wie bisher ganz zu sehen.
+
+Die Einstellung merkt sich jedes Gerät für sich. Das Tablett kann also auf 150 % stehen,
+während der Rechner bei 100 % bleibt.
+
 ### Verbrauchsmaterial und Meldungen stehen neben der Karte
 **Vorher:** Rechts standen nur die Koordinaten von Roboter und Ladestation — Zahlen, die
 im Alltag niemand braucht.
