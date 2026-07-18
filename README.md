@@ -2,9 +2,34 @@
 
 # ioBroker.dreame
 
-Adapter for Dreame and MOVA robot vacuums and robot mowers.
+Adapter for Dreame and MOVA robot vacuums and robot mowers — **with a live map
+you can actually use.**
 
-**Supported brands:** Dreame, MOVA (select in adapter settings)
+![The map widget: live map with rooms, no-go zones, furniture and per-room settings](pics/screenshot1.jpg)
+
+| | |
+|:--:|:--:|
+| ![Station menu: empty dust, wash mop, stop drying](pics/screenshot2.jpg) | ![Cleaning mode: vacuum, mop, both, or mop after vacuum](pics/screenshot3.jpg) |
+| Tap the dock to empty the bin, wash the mop or stop drying | Pick the cleaning mode per room or for all of them |
+
+## What this adapter gives you
+
+The map is not a picture the robot sends every few minutes — it is assembled
+from the device's own incremental updates, the same way the Dreame app does it.
+The travel path grows as the robot drives, cleaned area fills in, and the robot
+icon moves along.
+
+Everything the robot knows is on it: rooms with their real names and colours,
+carpets, furniture, no-go zones, no-mop zones, virtual walls, doors and
+obstacles.
+
+**And you can operate it.** Tap a room to select it, tap its badge to set
+suction, water and cleaning mode for that room alone. Tap the dock for the
+station functions. Start, pause and send home are one tap. Consumable levels and
+warnings — full dust bag, empty water tank — sit next to the map.
+
+The widget ships with the adapter and needs no configuration. Point a browser or
+a VIS iframe at `http://<iobroker>:8082/dreame/` and it finds the robot itself.
 
 > ### ⚠️ Only tested with a Dreame X40 Ultra
 >
@@ -25,10 +50,11 @@ Adapter for Dreame and MOVA robot vacuums and robot mowers.
 
 ## About this fork
 
-This is a fork of [TA2k/ioBroker.dreame](https://github.com/TA2k/ioBroker.dreame)
-that focuses on the vacuum map: the adapter assembles the live map from the
-device's incremental updates and ships a self-contained map widget under `www/`
-(reachable at `http://<iobroker>:8082/dreame/`).
+**Supported brands:** Dreame, MOVA (select in adapter settings)
+
+This is a fork of [TA2k/ioBroker.dreame](https://github.com/TA2k/ioBroker.dreame).
+Everything the original does is still there — vacuums, mowers, all the states and
+remote commands. What this fork adds is the map handling described above.
 
 The map handling is a port of the mapping code from
 [Tasshack/dreame-vacuum](https://github.com/Tasshack/dreame-vacuum), the Home
