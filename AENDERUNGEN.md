@@ -78,6 +78,12 @@ teilweise ein **anderer** Raum verstellt — z. B. Änderung an der Küche lande
 **Jetzt:** Die Einstellung geht an den Raum, den man auch gemeint hat.
 *(Betrifft auch das Original; als Fehlerbericht formuliert.)*
 
+### Mehr Platz für die Karte
+**Vorher:** Über der Karte lag eine Titelzeile, die nur den Namen des Widgets zeigte.
+**Jetzt:** Die Zeile ist weg, die Karte bekommt die Höhe. Der Name des Roboters steht
+links oben auf der Karte, der Verbindungszustand rechts oben, und das Zahnrad für die
+Einstellungen sitzt rechts neben der Überschrift „Reinigung".
+
 ### Die Bedienung lässt sich größer stellen
 **Vorher:** Menü, Regler und die Beschriftungen auf der Karte hatten eine feste Größe.
 Auf einem Tablett an der Wand war das zu klein zum Treffen.

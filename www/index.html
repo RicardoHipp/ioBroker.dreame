@@ -25,30 +25,36 @@
   body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     background:var(--bg); color:var(--txt);}
   /* Kein eigener Rahmen, keine Breitenbegrenzung: laeuft im iframe bzw. im HTML-Widget,
-     dessen Rahmen sonst doppelt waere. Immer die volle Flaeche nutzen — auch in der Hoehe:
-     Kopfzeile nimmt, was sie braucht, der Rest geht an Karte und Seitenspalte. */
+     dessen Rahmen sonst doppelt waere. Immer die volle Flaeche nutzen — auch in der Hoehe.
+     Es gibt bewusst KEINE Kopfzeile mehr: sie kostete Hoehe fuer eine Zeile, die nichts
+     Bedienbares enthielt. Geraetename und Verbindung stehen jetzt auf der Karte, das
+     Zahnrad neben der Ueberschrift der Bedienspalte. */
   .app{width:100%; height:100%; background:var(--panel); overflow:hidden;
     display:flex; flex-direction:column;}
-  /* zoom (nicht transform:scale): zoom rechnet die neue Groesse in den Seitenaufbau ein,
-     die Spalte wird also wirklich breiter und die Karte entsprechend schmaler. transform
-     wuerde nur groesser malen und ueber die Karte hinausragen. */
-  .head{flex:none; display:flex; align-items:center; gap:12px; padding:16px 20px;
-    border-bottom:1px solid var(--line); zoom:var(--ui);
-    background:linear-gradient(180deg,var(--panel2),transparent);}
-  .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);
-    box-shadow:0 0 12px var(--accent)}
-  .head h1{font-size:16px;margin:0;font-weight:650}
-  .head .tag{margin-left:auto;font-size:11px;color:var(--muted);
-    border:1px solid var(--line);padding:4px 10px;border-radius:999px}
+  /* Beschriftung ueber der Karte (Geraetename links, Verbindung rechts). Schwebt ueber
+     dem Bild, nimmt also keine Hoehe weg. */
+  .maptag{position:absolute; top:10px; z-index:5; zoom:var(--ui);
+    font-size:11.5px; line-height:1; padding:6px 11px; border-radius:999px;
+    background:var(--panel); border:1px solid var(--line); color:var(--muted);
+    box-shadow:0 2px 8px rgba(0,0,0,.18); pointer-events:none; max-width:60%;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .maptag.links{left:10px; color:var(--txt); font-weight:700}
+  .maptag.rechts{right:10px}
+  /* Ueberschrift der Bedienspalte mit dem Zahnrad rechts daneben */
+  .sidehead{display:flex; align-items:center; gap:8px; margin-bottom:12px; position:relative}
+  .sidehead h2{margin:0; flex:1}
   /* Zahnrad + Einstellungs-Popover (Ansicht + Räume ein/ausblenden) */
-  .gearwrap{position:relative;}
-  .gear{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
-    background:var(--panel);color:var(--txt);font-size:17px;line-height:1;cursor:pointer;
+  .gearwrap{position:static;}
+  .gear{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);
+    background:var(--panel);color:var(--txt);line-height:1;cursor:pointer;
     display:flex;align-items:center;justify-content:center;transition:.12s;}
   .gear:hover{background:var(--panel2)}
   .gear:active{transform:scale(.92)}
   .gear.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-  .gearpop{position:absolute;right:0;top:calc(100% + 10px);z-index:50;width:250px;
+  /* Das Popover spannt sich ueber die ganze Spaltenbreite (left:0/right:0 an .sidehead).
+     Wichtig, weil die Spalte senkrecht rollt: alles, was seitlich darueber hinausragt,
+     wuerde abgeschnitten. So bleibt es innerhalb und rollt notfalls einfach mit. */
+  .gearpop{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:50;
     background:var(--panel);border:1px solid var(--line);border-radius:12px;
     box-shadow:0 12px 34px rgba(0,0,0,.32);padding:14px 16px;display:none;}
   .gearpop.open{display:block;}
@@ -255,33 +261,15 @@
 </head>
 <body>
   <div class="app">
-    <div class="head">
-      <span class="dot"></span>
-      <h1>Dreame Karte · selbst gerendert</h1>
-      <span class="tag" id="conn">…</span>
-      <div class="gearwrap">
-        <button class="gear" id="gearBtn" title="Einstellungen" aria-label="Einstellungen"></button>
-        <div class="gearpop" id="gearPop">
-          <h2>Ansicht</h2>
-          <div class="toggles">
-            <button class="tgl" id="t-trail">Spur</button>
-            <button class="tgl off" id="t-changes" title="Rot = seit Reinigungsstart geändert">Änderungen</button>
-            <button class="tgl" id="t-smooth" title="An: Roboter fährt die Strecke flüssig ab, hinkt der gemeldeten Position dafür bis zu einem Paket (~3 s) hinterher. Aus: springt alle ~3 s exakt auf die gemeldete Position.">Flüssig</button>
-            <button class="tgl off" id="t-grid" title="Diagnose: Gitternetz auf den Zellgrenzen + Fadenkreuze an bekannten Weltkoordinaten. Zeigt, ob das Overlay auf den Kartenpixeln sitzt.">Raster</button>
-          </div>
-          <label class="slabel">Anzeigegröße: <b id="uiVal">100 %</b></label>
-          <input type="range" id="uiRange" min="100" max="200" step="5" value="100">
-          <h2 style="margin-top:16px">Räume</h2>
-          <div class="roomlist" id="roomList"></div>
-        </div>
-      </div>
-    </div>
     <div class="body">
       <div class="stage" id="stage">
         <div class="mapwrap" id="mapwrap">
           <canvas id="map"></canvas>
           <svg id="overlay"></svg>
         </div>
+        <!-- Beschriftung der Karte: links der Roboter, rechts der Verbindungszustand -->
+        <div class="maptag links" id="devName"></div>
+        <div class="maptag rechts" id="conn">…</div>
         <div class="zoom">
           <button id="z-in" title="Zoom +" aria-label="Vergrößern"></button>
           <button id="z-out" title="Zoom −" aria-label="Verkleinern"></button>
@@ -289,7 +277,25 @@
         </div>
       </div>
       <div class="side"><div class="sidein">
-        <h2>Reinigung</h2>
+        <div class="sidehead">
+          <h2>Reinigung</h2>
+          <div class="gearwrap">
+            <button class="gear" id="gearBtn" title="Einstellungen" aria-label="Einstellungen"></button>
+            <div class="gearpop" id="gearPop">
+              <h2>Ansicht</h2>
+              <div class="toggles">
+                <button class="tgl" id="t-trail">Spur</button>
+                <button class="tgl off" id="t-changes" title="Rot = seit Reinigungsstart geändert">Änderungen</button>
+                <button class="tgl" id="t-smooth" title="An: Roboter fährt die Strecke flüssig ab, hinkt der gemeldeten Position dafür bis zu einem Paket (~3 s) hinterher. Aus: springt alle ~3 s exakt auf die gemeldete Position.">Flüssig</button>
+                <button class="tgl off" id="t-grid" title="Diagnose: Gitternetz auf den Zellgrenzen + Fadenkreuze an bekannten Weltkoordinaten. Zeigt, ob das Overlay auf den Kartenpixeln sitzt.">Raster</button>
+              </div>
+              <label class="slabel">Anzeigegröße: <b id="uiVal">100 %</b></label>
+              <input type="range" id="uiRange" min="100" max="200" step="5" value="100">
+              <h2 style="margin-top:16px">Räume</h2>
+              <div class="roomlist" id="roomList"></div>
+            </div>
+          </div>
+        </div>
         <div class="clean" id="cleanPanel">
           <div class="selroom" id="selRoomName">Raum antippen zum Wählen</div>
           <div class="pickrow" id="custRow">
@@ -2395,6 +2401,13 @@
           }
           baueIds();
         }
+        // Geraetename fuer die Beschriftung links oben auf der Karte. Der steht im
+        // Adapter-Objekt (z. B. "X40 Ultra Complete"), nicht in einem Zustand.
+        const dev = await new Promise(r=> sock.emit('getObject', `dreame.0.${DID}`, (e,o)=> r(o)));
+        // common.name ist mal eine Zeichenkette, mal ein Sprachobjekt {de:…, en:…}
+        let dn = dev && dev.common && dev.common.name;
+        if (dn && typeof dn === 'object') dn = dn.de || dn.en || '';
+        document.getElementById('devName').textContent = dn || ('Dreame ' + DID);
         robotPos   = parsePt(await sGet(sock, IDS.robot));
         chargerPos = parsePt(await sGet(sock, IDS.charger));
         const cloud = await sGet(sock, IDS.cloud); // Fahrspur (tr) steckt in der Karte -> rebuild setzt sie
