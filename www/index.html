@@ -1,0 +1,2324 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dreame Karte – eigenes Widget</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#171e2e; --panel2:#1d2740; --line:#2a3550;
+    --txt:#e6ecf7; --muted:#8ea0c0; --accent:#2bb4e2;
+    --robot:#ff5c7a; --charger:#38e29b; --map-bg:#0c1020;
+  }
+  @media (prefers-color-scheme: light){
+    :root{ --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
+           --txt:#1a2436; --muted:#5a6b88; --map-bg:#eaf0f8; }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--txt);}
+  /* Kein eigener Rahmen, keine Breitenbegrenzung: laeuft spaeter im iframe bzw. im
+     HTML-Widget, dessen Rahmen sonst doppelt waere. Immer die volle Flaeche nutzen. */
+  .app{width:100%; min-height:100%; background:var(--panel); overflow:hidden;}
+  .head{display:flex; align-items:center; gap:12px; padding:16px 20px;
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,var(--panel2),transparent);}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 12px var(--accent)}
+  .head h1{font-size:16px;margin:0;font-weight:650}
+  .head .tag{margin-left:auto;font-size:11px;color:var(--muted);
+    border:1px solid var(--line);padding:4px 10px;border-radius:999px}
+  /* Zahnrad + Einstellungs-Popover (Ansicht + Räume ein/ausblenden) */
+  .gearwrap{position:relative;}
+  .gear{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
+    background:var(--panel);color:var(--txt);font-size:17px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;transition:.12s;}
+  .gear:hover{background:var(--panel2)}
+  .gear:active{transform:scale(.92)}
+  .gear.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .gearpop{position:absolute;right:0;top:calc(100% + 10px);z-index:50;width:250px;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 12px 34px rgba(0,0,0,.32);padding:14px 16px;display:none;}
+  .gearpop.open{display:block;}
+  .gearpop h2:first-child{margin-top:0}
+  .body{display:grid;grid-template-columns:1fr 250px}
+  @media (max-width:720px){ .body{grid-template-columns:1fr} }
+
+  .stage{position:relative; overflow:hidden; height:72vh; min-height:420px;
+    background:radial-gradient(circle at 50% 40%, rgba(43,180,226,.06), transparent 60%);
+    touch-action:none;}
+  /* KEIN will-change:transform hier! Das sagt dem Browser "dieses Element wird bewegt,
+     leg es in eine GPU-Ebene und behalte das gerasterte Bild". Beim Zoomen skaliert er dann
+     das ZWISCHENGESPEICHERTE Bild hoch, statt den Inhalt neu zu zeichnen — und der Roboter
+     (im SVG nur ~18 px gross) wird matschig. Erklaert alle Symptome: unscharf in manchen
+     Zoomstufen und eine weiter wieder scharf (je nachdem, wann der Browser neu rastert),
+     unscharf waehrend der Fahrt, und unscharf nach einem Raum-Klick (der zeichnet die Karte
+     neu und friert die Ebene damit auf der alten Aufloesung ein). */
+  .mapwrap{position:absolute; top:0; left:0; line-height:0;
+    transform-origin:0 0; cursor:grab;}
+  .mapwrap.drag{cursor:grabbing}
+  #map{display:block; image-rendering:pixelated;}
+  /* user-select: sonst markiert ein Zieh-Geste ueber die Karte die Raumbeschriftungen */
+  #overlay{position:absolute; inset:0; width:100%; height:100%; overflow:visible;
+    user-select:none; -webkit-user-select:none;}
+  /* Raummarke = Name + Badge. Die Gruppe wird gegen den Zoom skaliert (skaliereMarken),
+     innen wird deshalb in BILDSCHIRMPIXELN gerechnet, nicht in Karteneinheiten. */
+  .rlabel{font-weight:800; letter-spacing:.2px; text-anchor:middle; dominant-baseline:middle;
+    font-size:13px; filter:drop-shadow(0 1px 1px rgba(255,255,255,.7)); pointer-events:none;}
+  .rbadge{cursor:pointer; color:var(--txt)}
+  .rbadge .pille{fill:var(--panel); stroke:var(--line); stroke-width:1; opacity:.96}
+  .rbadge .hit{fill:transparent}          /* 44px Trefferflaeche fuer den Finger */
+  .rbadge text{font-size:12px; font-weight:800; dominant-baseline:middle;
+    fill:var(--txt); text-anchor:start; user-select:none}
+  .rbadge .zr{opacity:.55}                /* Zahnrad nur andeuten */
+  .stationhit{cursor:pointer}
+  .trail{fill:none; stroke:#ffffff; stroke-width:1.1; stroke-linejoin:round;
+    stroke-linecap:round; opacity:.85; pointer-events:none;}
+  .thit{stroke:transparent; stroke-width:2; pointer-events:stroke; cursor:pointer;}
+  #trailSel{stroke:#ff2d2d; stroke-width:3.5; fill:none; stroke-linecap:round; pointer-events:none;
+    filter:drop-shadow(0 0 1px #ff2d2d);}
+  .dbg{font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace; background:var(--panel);
+    border:1px solid var(--line); border-radius:10px; padding:10px; white-space:pre-wrap;}
+  body.trail-off .trail{display:none}
+  /* BEWUSST KEINE CSS-Transition auf dem Roboter-Icon: ein Uebergang auf `transform` schiebt
+     das Icon in eine eigene GPU-Ebene. Die wird in Icon-Groesse (~4,5 SVG-Einheiten) gerastert
+     und vom Karten-Zoom hochskaliert -> es wird waehrend der Fahrt sichtbar unscharf.
+     Position und Drehung setzt der Abspielkopf ohnehin Bild fuer Bild selbst (stepAnim),
+     inklusive der Schlussdrehung — eine Transition waere doppelt gemoppelt. */
+
+  .zoom{position:absolute; right:14px; bottom:14px; display:flex; flex-direction:column;
+    gap:6px; z-index:5}
+  .zoom button{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);
+    background:var(--panel);color:var(--txt);font-size:18px;line-height:1;cursor:pointer;
+    display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.22)}
+  .zoom button:hover{border-color:var(--accent)}
+  .zoom button:active{transform:scale(.92);background:var(--panel2)}
+  .hint{position:absolute; left:14px; bottom:14px; font-size:11px; color:var(--muted);
+    background:var(--panel); border:1px solid var(--line); padding:4px 9px;
+    border-radius:8px; opacity:.85; z-index:5}
+
+  .side{border-left:1px solid var(--line); padding:16px; background:var(--panel2);
+    max-height:calc(72vh + 42px); overflow-y:auto}
+  @media (max-width:720px){ .side{border-left:none;border-top:1px solid var(--line);max-height:none} }
+  .side h2{font-size:11px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--muted);margin:0 0 12px}
+  .toggles{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+  .tgl{font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;
+    border:1px solid var(--line);background:var(--panel);color:var(--txt);
+    cursor:pointer;user-select:none;transition:opacity .15s;
+    display:inline-flex;align-items:center;gap:6px}
+  /* An/Aus tragen beide Icons; die bestehende .off-Logik blendet nur um — so bleibt
+     der Zustand auch ohne Farbe erkennbar (Haken gegen leerer Kreis). */
+  .tgl .ic-an{color:var(--accent)}
+  .tgl .ic-aus,.tgl.off .ic-an{display:none}
+  .tgl.off .ic-aus{display:inline-block;color:var(--muted)}
+  .tgl.off{opacity:.45}
+  .roomlist{margin-bottom:18px}
+  .rrow{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:9px;
+    cursor:pointer;user-select:none;transition:background .12s}
+  .rrow:hover{background:var(--panel)}
+  .rrow .sw{width:13px;height:13px;border-radius:4px;flex:none;border:1px solid rgba(0,0,0,.15)}
+  .rrow span:last-child{font-size:13px;font-weight:600}
+  .rrow.off{opacity:.4}
+  .rrow.off .sw{filter:grayscale(1)}
+  .rrow.sel{background:var(--panel);box-shadow:inset 0 0 0 2px var(--accent,#4a78e0)}
+  .rrow.sel span:last-child{font-weight:800}
+  .statusbox{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:10px 12px;margin-bottom:10px}
+  .statusbox .stext{font-size:15px;font-weight:800}
+  .statusbox .ssub{font-size:12px;opacity:.75;margin-top:3px}
+  .clean{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+  .selroom{font-weight:800;font-size:14px;color:var(--accent,#4a78e0)}
+  /* Auswahl-Zeile: tippt man drauf, oeffnet sich ein Overlay mit den Optionen.
+     Touch-freundlich (grosses Tap-Ziel) und platzsparend; dasselbe Muster soll spaeter
+     auch fuer die Einstellungen je Raum dienen. */
+  .pickrow{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:11px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);
+    cursor:pointer;user-select:none;transition:.12s}
+  .pickrow:hover{border-color:var(--accent,#4a78e0)}
+  .pickrow .pk{font-size:12px;opacity:.75}
+  .pickrow .pv{font-size:13px;font-weight:800;color:var(--accent,#4a78e0);
+    display:flex;align-items:center;gap:4px}
+  .pickrow .pv .chev{opacity:.6}
+  /* Overlay */
+  .ovl{position:fixed;inset:0;z-index:200;display:none;align-items:flex-end;justify-content:center;
+    background:rgba(0,0,0,.45)}
+  .ovl.open{display:flex}
+  @media (min-width:600px){ .ovl{align-items:center} }
+  .ovlbox{width:100%;max-width:420px;background:var(--panel);border:1px solid var(--line);
+    border-radius:16px 16px 0 0;padding:16px;box-shadow:0 -8px 40px rgba(0,0,0,.35)}
+  @media (min-width:600px){ .ovlbox{border-radius:16px} }
+  .ovlbox h3{margin:0 0 12px;font-size:15px;font-weight:800}
+  .opt{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;
+    padding:13px 14px;margin-bottom:8px;border-radius:11px;cursor:pointer;
+    border:1.5px solid var(--line);background:var(--panel2);color:var(--txt);transition:.12s}
+  .opt:hover{border-color:var(--accent,#4a78e0)}
+  .opt:active{transform:scale(.985)}
+  .opt.on{border-color:var(--accent,#4a78e0);box-shadow:inset 0 0 0 1px var(--accent,#4a78e0)}
+  /* gerade nicht moeglich: lesbar bleiben (der Grund steht darunter), aber nicht bedienbar */
+  .opt.aus{opacity:.45;cursor:default}
+  .opt.aus:hover{border-color:var(--line)}
+  .opt.aus:active{transform:none}
+  .opt .ot{font-size:14px;font-weight:800}
+  .opt .od{font-size:11.5px;opacity:.7}
+  .ovlclose{width:100%;padding:11px;border-radius:11px;border:none;background:var(--panel2);
+    color:var(--txt);font-size:13px;font-weight:700;cursor:pointer;margin-top:4px}
+  .ovlsave{width:100%;padding:12px;border-radius:11px;border:none;background:var(--accent,#4a78e0);
+    color:#fff;font-size:13px;font-weight:800;cursor:pointer;margin-top:4px;transition:.12s}
+  .ovlsave:disabled{opacity:.35;cursor:default}
+  .slabel{font-size:12px;opacity:.8}
+  /* Regler bewusst gross: muss am Tablet/Handy mit dem Finger treffbar sein. Einen
+     nativen Slider vergroessert Chrome nicht mit, deshalb Track und Daumen selbst.
+     Der gefuellte Teil links kommt dabei nicht mehr von allein -> --fill, gesetzt
+     von reglerFuellung(). pan-y: senkrecht darf gescrollt werden, waagrecht zieht. */
+  input[type=range]{-webkit-appearance:none;appearance:none;
+    width:100%;height:34px;margin:0;background:transparent;cursor:pointer;touch-action:pan-y}
+  input[type=range]::-webkit-slider-runnable-track{height:10px;border-radius:99px;
+    background:linear-gradient(to right,var(--accent) var(--fill,0%),var(--line) var(--fill,0%))}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:28px;height:28px;margin-top:-9px;border-radius:50%;
+    background:var(--accent);border:3px solid var(--panel);box-shadow:0 1px 5px rgba(0,0,0,.45)}
+  input[type=range]::-moz-range-track{height:10px;border-radius:99px;background:var(--line)}
+  input[type=range]::-moz-range-progress{height:10px;border-radius:99px;background:var(--accent)}
+  input[type=range]::-moz-range-thumb{width:28px;height:28px;border-radius:50%;
+    background:var(--accent);border:3px solid var(--panel);box-shadow:0 1px 5px rgba(0,0,0,.45)}
+  .actbtns{display:flex;gap:8px}
+  /* Nur Symbol, kein Text — Bedeutung ueber title/aria-label. 44px Hoehe, damit der
+     Knopf am Tablet sicher mit dem Finger zu treffen ist. */
+  .abtn{flex:1;min-width:0;height:44px;border-radius:9px;border:none;
+    cursor:pointer;color:#fff;transition:transform .08s,opacity .12s,filter .12s;opacity:.92;
+    display:inline-flex;align-items:center;justify-content:center;
+    -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+  /* Sichtbare Rueckmeldung beim Druecken: am Tablet gibt es sonst gar keine — man weiss
+     nicht, ob der Tipp angekommen ist, und tippt ein zweites Mal. */
+  .abtn:active{transform:scale(.93);filter:brightness(.85);opacity:1}
+  .abtn:disabled{opacity:.4;cursor:default}
+  .abtn:disabled:active{transform:none;filter:none}
+  .abtn:hover{opacity:1}
+  .abtn.start{background:#2fae5c}
+  .abtn.stop{background:#e0554a}
+  .abtn.home{background:#4a78e0}
+  .abtn:disabled{opacity:.35;cursor:not-allowed}
+  .chip{display:flex;align-items:center;gap:10px;padding:9px 11px;margin-bottom:9px;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px}
+  .chip .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+    font-size:14px;flex:none}
+  .chip .k{font-size:11px;color:var(--muted)}
+  .chip .v{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+  #err{color:#ff8098;font-size:12px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="head">
+      <span class="dot"></span>
+      <h1>Dreame Karte · selbst gerendert</h1>
+      <span class="tag" id="conn">…</span>
+      <div class="gearwrap">
+        <button class="gear" id="gearBtn" title="Einstellungen" aria-label="Einstellungen"></button>
+        <div class="gearpop" id="gearPop">
+          <h2>Ansicht</h2>
+          <div class="toggles">
+            <button class="tgl" id="t-trail">Spur</button>
+            <button class="tgl off" id="t-changes" title="Rot = seit Reinigungsstart geändert">Änderungen</button>
+            <button class="tgl" id="t-smooth" title="An: Roboter fährt die Strecke flüssig ab, hinkt der gemeldeten Position dafür bis zu einem Paket (~3 s) hinterher. Aus: springt alle ~3 s exakt auf die gemeldete Position.">Flüssig</button>
+            <button class="tgl off" id="t-grid" title="Diagnose: Gitternetz auf den Zellgrenzen + Fadenkreuze an bekannten Weltkoordinaten. Zeigt, ob das Overlay auf den Kartenpixeln sitzt.">Raster</button>
+          </div>
+          <h2>Räume</h2>
+          <div class="roomlist" id="roomList"></div>
+        </div>
+      </div>
+    </div>
+    <div class="body">
+      <div class="stage" id="stage">
+        <div class="mapwrap" id="mapwrap">
+          <canvas id="map"></canvas>
+          <svg id="overlay"></svg>
+        </div>
+        <div class="zoom">
+          <button id="z-in" title="Zoom +" aria-label="Vergrößern"></button>
+          <button id="z-out" title="Zoom −" aria-label="Verkleinern"></button>
+          <button id="z-reset" title="Zurücksetzen" aria-label="Ansicht zurücksetzen"></button>
+        </div>
+        <div class="hint">Mausrad zoomt · ziehen verschiebt</div>
+      </div>
+      <div class="side">
+        <h2>Reinigung</h2>
+        <div class="clean" id="cleanPanel">
+          <div class="selroom" id="selRoomName">Kein Raum gewählt</div>
+          <div class="pickrow" id="custRow">
+            <span class="pk">Reinigung</span>
+            <span class="pv"><span id="custVal">Einheitlich</span></span>
+          </div>
+          <div id="globalOpts">
+            <div class="pickrow" id="modeRow">
+              <span class="pk">Reinigungsmodus</span>
+              <span class="pv"><span id="modeVal">Saugen</span></span>
+            </div>
+          </div>
+          <div class="slabel" id="indivHint" style="display:none;opacity:.7">
+            Jeder Raum wird nach seinen gespeicherten Einstellungen gereinigt — am Raum in der Karte ändern.
+          </div>
+          <div id="globalSliders">
+            <label class="slabel">Saugstärke: <b id="suctionVal">Standard</b></label>
+            <input type="range" id="suction" min="0" max="3" step="1" value="1">
+            <label class="slabel">Wassermenge: <b id="waterVal">3</b></label>
+            <input type="range" id="water" min="1" max="32" step="1" value="3">
+          </div>
+          <div class="actbtns">
+            <button class="abtn start" id="c-start" title="Start" aria-label="Reinigung starten"></button>
+            <button class="abtn stop" id="c-stop" title="Stop" aria-label="Reinigung anhalten"></button>
+            <button class="abtn home" id="c-home" title="Home" aria-label="Zurück zur Ladestation"></button>
+          </div>
+        </div>
+        <h2>Debug · Spur</h2>
+        <div class="dbg" id="dbg">Klicke auf einen Spur-Abschnitt…</div>
+        <h2 style="margin-top:18px">Status</h2>
+        <div class="statusbox">
+          <div class="stext" id="stateText">–</div>
+          <div class="ssub" id="stateSub">–</div>
+        </div>
+        <div class="chip"><div class="ic" style="background:rgba(255,92,122,.15);color:var(--robot)">🤖</div>
+          <div><div class="k">Roboter</div><div class="v" id="v-robot">–</div></div></div>
+        <div class="chip"><div class="ic" style="background:rgba(56,226,155,.15);color:var(--charger)">🔌</div>
+          <div><div class="k">Ladestation</div><div class="v" id="v-charger">–</div></div></div>
+        <div id="err"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auswahl-Overlay (wird von den .pickrow-Zeilen geoeffnet) -->
+  <div class="ovl" id="pickOvl">
+    <div class="ovlbox">
+      <h3 id="pickTitle">Auswahl</h3>
+      <div id="pickOpts"></div>
+      <button class="ovlsave" id="pickSave" style="display:none">Speichern</button>
+      <button class="ovlclose" id="pickCancel">Abbrechen</button>
+    </div>
+  </div>
+
+  <script src="icons.js"></script>
+  <script src="icons_ui.js"></script>
+  <script>
+  // ===== Konfiguration =====
+  // ---- Wo laeuft ioBroker, welcher Roboter? ----
+  // Bewusst NICHTS davon im Quelltext: der Adapter wird ausgeliefert, da haben eine feste
+  // IP und eine fremde Geraete-ID nichts verloren. Drei Stufen, in dieser Reihenfolge:
+  //   1. URL:          ?iob=http://host:8082&did=123456   (zum lokalen Testen ueber file://)
+  //   2. gemerkt:      einmal per URL gesetzt, bleibt im Browser (localStorage)
+  //   3. automatisch:  Server = Herkunft der Seite, Geraet = das einzige gefundene
+  // Im Adapter laeuft damit Stufe 3 ohne jede Einstellung.
+  const _par = new URLSearchParams(location.search);
+  const _merk = (k, v) => { try { if (v) localStorage.setItem('dreame.' + k, v);
+                                  return localStorage.getItem('dreame.' + k); } catch (e) { return null; } };
+  const IOB = _par.get('iob') || _merk('iob', _par.get('iob'))
+           || (location.protocol === 'file:' ? '' : location.origin);
+  let DID = _par.get('did') || _merk('did', _par.get('did')) || null;   // null = selbst suchen
+  // Wird erst gefuellt, wenn DID feststeht (kann aus der Verbindung kommen, s. ermittleDid).
+  // Objekt bleibt dasselbe, damit alle Verweise darauf gueltig bleiben.
+  const IDS = {};
+  function baueIds(){
+    Object.assign(IDS, {
+    cloud:   `dreame.0.${DID}.map.mergedCloud`,   // UNSER Adapter (gemergte Live-Karte)
+    robot:   `dreame.0.${DID}.map.robot`,
+    charger: `dreame.0.${DID}.map.charger`,
+    tr:      `dreame.0.${DID}.map.tr`,
+    // Status-Anzeige
+    state:    `dreame.0.${DID}.status.state`,             // DreameVacuumState (Detail)
+    status:   `dreame.0.${DID}.status.status`,            // DreameVacuumStatus (fuer Badge/Fehler)
+    battery:  `dreame.0.${DID}.status.battery-level`,
+    charging: `dreame.0.${DID}.status.charging-status`,
+    tstat:    `dreame.0.${DID}.status.task-status`,       // fuer "laeuft gerade" (HA: started)
+    cpaused:  `dreame.0.${DID}.status.cleaning-paused`,   // dito
+    wash:     `dreame.0.${DID}.status.self-wash-base-status`,  // Stationssymbol (HA: station_status)
+    empty:    `dreame.0.${DID}.status.auto-empty-status`,      // dito
+    hotw:     `dreame.0.${DID}.status.hot-water-status`,       // dito (Heisswaesche)
+    tank:     `dreame.0.${DID}.status.water-tank`,             // fuer washing/drying_available
+    mopstat:  `dreame.0.${DID}.status.mop-in-station`,         // dito
+    drain:    `dreame.0.${DID}.status.drainage-status`,        // dito
+    dustcol:  `dreame.0.${DID}.status.dust-collection`,        // fuer dust_collection_available
+    cprog:    `dreame.0.${DID}.status.cleaning-progress`,
+    dprog:    `dreame.0.${DID}.status.drying-progress`,
+    carea:    `dreame.0.${DID}.status.cleaned-area`,
+    ctime:    `dreame.0.${DID}.status.cleaning-time`,
+    });
+  }
+  if (DID) baueIds();
+  // Deutsche Zustands-Texte (S2P1 state). Grundlage war der dreamehome-Adapter; gegen HAs
+  // DreameVacuumState (types.py 374-447) geprueft und korrigiert:
+  //   4   hiess "Pausiert" — ist aber ERROR. Eine Stoerung sah dadurch aus wie eine Pause.
+  //   21  hiess "Reinigung pausiert" — gemeint ist der angehaltene MOPP-Waschgang.
+  //   108 hiess "Pausiert" — gemeint ist die angehaltene Bodenpflege.
+  // Ausserdem die 20 Zustaende ergaenzt, die ganz fehlten (wurden als "Status 34" angezeigt).
+  const STATE_DE = {
+    '-1':'Unbekannt', 1:'Reinigung', 2:'Standby', 3:'Pausiert', 4:'Fehler',
+    5:'Zurück zum Aufladen', 6:'Laden', 7:'Wischen', 8:'Mopp-Trocknung', 9:'Mopp-Reinigung',
+    10:'Rückkehr zum Reinigen', 11:'Eine Karte wird erstellt', 12:'Beim Reinigen', 13:'Laden beendet',
+    14:'Aktualisieren', 15:'Reinigung rufen', 16:'Automatische Reparatur der Basisstation',
+    17:'Zurückkehren zum Installieren des Wischmopps', 18:'Zurückkehren, um das Wischpad zu entfernen',
+    19:'Selbsttest Wasserzufuhr/-abfluss läuft', 20:'Wischmopp reinigen und Wasser nachfüllen',
+    21:'Mopp-Reinigung pausiert', 22:'Automatische Entleerung', 23:'Ferngesteuerte Reinigung',
+    24:'Intelligentes Aufladen', 25:'Zweite Reinigung läuft', 26:'Folgend', 27:'Partielle Reinigung',
+    28:'Rückfahrt zur Staubsammlung', 29:'Auf Aufgaben warten', 30:'Reinigung der Waschplattenbasis',
+    31:'Rückfahrt zum Wasserablassen', 32:'Wasser wird abgelassen',
+    33:'Wasserzufuhr/-ableitung: Entleeren', 34:'Staubbehälter wird entleert',
+    35:'Trocknung von Staubbehälter und -beutel',
+    36:'Trocknen von Staubbehälter/-beutel angehalten', 37:'Weiter zum zusätzlichen Reinigungsbereich',
+    38:'Zusätzliche Reinigung läuft', 95:'Haustiersuche pausiert', 96:'Haustiersuche',
+    97:'Shortcut läuft', 98:'Kameraüberwachung läuft', 99:'Kameraüberwachung pausiert',
+    101:'Anfängliche Tiefenreinigung läuft', 102:'Anfängliche Tiefenreinigung pausiert',
+    103:'Desinfizieren', 104:'Desinfizieren mit Trocknen', 105:'Wischmopp wird gewechselt',
+    106:'Umschalten des Wischmopps pausiert', 107:'Pflege im Gange', 108:'Pflege pausiert',
+    109:'Gegenstand wird aufgenommen', 113:'Gegenstände werden einsortiert',
+    114:'Haustier-Überwachung', 115:'Haustier-Überwachung pausiert',
+    116:'Wischmopp wird angebracht', 117:'Wischmopp wird abgenommen',
+    118:'Intelligentes Nachladen', 120:'Unterstützte Reinigung',
+    121:'Fährt in die Station', 122:'Verlässt die Station',
+    140:'Fährt zum Treppensteiger', 141:'Dockt am Treppensteiger an', 142:'Am Treppensteiger angedockt',
+    143:'Treppensteiger navigiert', 144:'Steigt Treppen', 145:'Treppensteigen beendet',
+    146:'Treppensteiger an der Station', 147:'Treppensteiger verlässt die Station',
+  };
+  const parseTrail = v => { try{ return JSON.parse(v).points||[]; }catch(e){ return []; } };
+  // Roher Dreame-tr-String -> Pfadpunkte (Weltkoord in mm).
+  //  L<dx>,<dy> = relative Linie (aufsummieren) | l<x>,<y> = absolute Linie
+  //  M/W/S<x>,<y> = absoluter Sprung (Umsetzfahrt = "Stift hoch", via isBreak nicht gezeichnet)
+  const decodeTr = trStr => {
+    if (!trStr || typeof trStr!=='string') return [];
+    const re=/([MWSLl])(-?\d+),(-?\d+)/g; let m; const pts=[]; let cx=0, cy=0;
+    while ((m=re.exec(trStr))){ const op=m[1], x=+m[2], y=+m[3];
+      if (op==='L'){ cx+=x; cy+=y; pts.push({x:cx,y:cy,operator:'L'}); }
+      else if (op==='l'){ cx=x; cy=y; pts.push({x:cx,y:cy,operator:'L'}); }
+      else { cx=x; cy=y; pts.push({x:cx,y:cy,operator:op}); } // M/W/S = Break
+    }
+    return pts;
+  };
+  const parsePt = v => { try { return JSON.parse(v); } catch(e){ return null; } };
+  const getCss = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#fff';
+  const errEl = document.getElementById('err');
+  const connEl = document.getElementById('conn');
+  const setConn = (txt,col)=>{ connEl.textContent = txt; connEl.style.color = col||''; connEl.style.borderColor = col||''; };
+
+  // ===== Raumnamen (Dreame Typ-Codes -> DE) =====
+  const ROOM_TYPE_DE = {0:'Raum',1:'Wohnzimmer',2:'Hauptschlafzimmer',3:'Arbeitszimmer',
+    4:'Küche',5:'Esszimmer',6:'Badezimmer',7:'Balkon',8:'Flur',9:'Abstellraum',
+    10:'Kleiderschrank',11:'Besprechungsraum',12:'Büro',13:'Fitnessbereich',
+    14:'Freizeitbereich',15:'Gästeschlafzimmer'};
+  const roomName = (id, seg) => { const t = seg && seg[id] && seg[id].type;
+    return (t!=null && ROOM_TYPE_DE[t]) ? ROOM_TYPE_DE[t] : ('Raum '+id); };
+
+  // ===== Farben — HA "Dreame Light"-Schema (= wie die App) =====
+  // HAs 4 Raum-Farbgruppen (types.py MapRendererColorScheme.segment), je [hell, kräftig].
+  // Zuordnung Raum->Gruppe kommt vom Adapter (META.ha.colorIndex = HAs set_segment_color_index).
+  const SEG = [
+    [[171,199,248],[121,170,255]], // 0 blau
+    [[249,224,125],[255,211,38]],  // 1 gelb
+    [[184,227,255],[141,210,255]], // 2 hellblau
+    [[184,217,141],[150,217,141]], // 3 grün
+  ];
+  const PAL = SEG.map(g=>g[0]);
+  const WHITE=[255,255,255], BLACK=[0,0,0];
+  const mix = (c,t,f)=>[Math.round(c[0]+(t[0]-c[0])*f),Math.round(c[1]+(t[1]-c[1])*f),Math.round(c[2]+(t[2]-c[2])*f)];
+  const rgbCss = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+  let roomColorIdx = {}; // Raum-ID -> Farb-Index (via Nachbar-Färbung, siehe computeRoomColors)
+  const segGrp = seg => SEG[(roomColorIdx[seg] != null ? roomColorIdx[seg] : (seg-1)) % SEG.length];
+  const roomCol = seg => { const g = segGrp(seg);
+    return { fill: g[0], border: g[1], label: mix(g[1],BLACK,0.5) }; };
+  // HA-Pixeltypen (types.py MapPixelType) — der Adapter liefert genau diese Werte
+  const PT = { OUTSIDE:0, UNKNOWN:252, NEW_SEGMENT:253, FLOOR:254, WALL:255 };
+  const isRoom = t => t>=1 && t<=63;
+  // HA "Dreame Light": floor/wall/new_segment/hidden_segment/passive_segment (types.py)
+  const FLOORCOL=[221,221,221], WALLCOL=[159,159,159], NEWSEGCOL=[153,191,255], HIDDENCOL=[226,226,226];
+  const PASSIVECOL=[200,200,200]; // color_scheme.passive_segment — Raum gehoert NICHT zum laufenden Auftrag
+  const CARPET_ALPHA=35/255, CARPET_USER_ALPHA=80/255; // carpet_color_detected / carpet_color
+  const hiddenSegs = () => new Set((META && META.ha && META.ha.hiddenSegments) || []);
+  // wie HA: ein Segment ist nur dann ein Raum, wenn es in der gespeicherten
+  // Raumstruktur (seg_inf) existiert; sonst "frisch gescannt" (NEW_SEGMENT)
+  const knownRoom = t => !META || !META.seg_inf || META.seg_inf[t] !== undefined;
+  // Füllfarbe für einen HA-Pixeltyp; null = nicht zeichnen.
+  // HA: UNKNOWN wird in FLOOR-Farbe gezeichnet (area_colors[UNKNOWN] = floor)!
+  const typeFill = t => {
+    if (isRoom(t)) return roomCol(t).fill;
+    if (t===PT.WALL) return WALLCOL;
+    if (t===PT.FLOOR || t===PT.UNKNOWN) return FLOORCOL;
+    if (t===PT.NEW_SEGMENT) return NEWSEGCOL;
+    return null;
+  };
+
+  // ===== Dekodierung =====
+  function b64ToU8(b64){ b64=b64.replace(/-/g,'+').replace(/_/g,'/'); const bin=atob(b64);
+    const u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i); return u8; }
+  async function inflate(u8){ const ds=new DecompressionStream('deflate');
+    const st=new Blob([u8]).stream().pipeThrough(ds); return new Uint8Array(await new Response(st).arrayBuffer()); }
+
+  // ===== Zustand (bleibt über Neuaufbauten erhalten) =====
+  const NS='http://www.w3.org/2000/svg', cell=4;
+  const hidden=new Set(); const labelEls={}, rowEls={};
+  const markEls={};   // raumId -> <g> mit Raumname + Badge (gegen den Zoom skaliert)
+  const cv=document.getElementById('map'), ov=document.getElementById('overlay');
+  const ctx=cv.getContext('2d'); ctx.imageSmoothingEnabled=false;
+  const off=document.createElement('canvas'); const octx=off.getContext('2d');
+  const stage=document.getElementById('stage'), wrap=document.getElementById('mapwrap');
+  let W,He,GS,H,META,rooms,raw,mapStart,MAPW,MAPH;
+  let robotMk=null, chargerMk=null, robotPos=null, chargerPos=null;
+  let trailEl=null, trailHit=null, trailSel=null, trailPts=[];
+  let scale=1,tx=0,ty=0,minScale=1,box={x0:0,y0:0,x1:1,y1:1}, firstFit=true;
+  const selectedRooms=new Set(); // per Klick gewählte Räume (Mehrfachauswahl, Klick toggelt)
+  let SOCK=null;              // socket.io-Verbindung für Steuerbefehle
+  // Reinigungsmodus: EINE Auswahl aus vier, genau wie das Geraet es kennt (siid 4, piid 23).
+  // Frueher waren es zwei kombinierbare Knoepfe + ein exklusiver, die dann umgerechnet wurden —
+  // die vier Werte sind die Realitaet, also direkt so abbilden.
+  const CLEAN_MODES = [
+    { id: 5122, name: 'Saugen',              desc: 'Nur saugen, ohne Wischmopp' },
+    { id: 5121, name: 'Wischen',             desc: 'Nur wischen, ohne zu saugen' },
+    { id: 5120, name: 'Saugen und Wischen',  desc: 'Beides gleichzeitig in einem Durchgang' },
+    { id: 5123, name: 'Wischen nach Saugen', desc: 'Erst alles saugen, danach alles wischen' },
+  ];
+  let cleanMode = 5122;                       // Vorauswahl: Saugen
+  const modeOf = (id) => CLEAN_MODES.find((m) => m.id === id) || CLEAN_MODES[0];
+  const modeWischt = (id) => id === 5121 || id === 5120 || id === 5123;
+  const modeSaugt  = (id) => id === 5122 || id === 5120 || id === 5123;
+
+  // ===== Raum-Einstellungen (cleanset) =====
+  // Pro Raum haelt das GERAET: [Saugstaerke, Wasser/Naesse, Wiederholung, Reihenfolge, Modus, Route].
+  // Wir lesen sie aus den Adapter-States und schreiben Aenderungen dorthin zurueck — den Rest
+  // (Befehl ans Geraet) erledigt der Adapter.
+  // Wichtig: "Wischen nach Saugen" gibt es hier NICHT — das ist ein Ablauf fuer die ganze
+  // Wohnung und existiert nur als globaler Modus.
+  const ROOM_MODES = [
+    { id: 0, name: 'Saugen',             desc: 'Nur saugen' },
+    { id: 1, name: 'Wischen',            desc: 'Nur wischen' },
+    { id: 2, name: 'Saugen und Wischen', desc: 'Beides gleichzeitig' },
+  ];
+  const ROOM_REPEATS = [
+    { id: 1, name: '1×', desc: 'Einmal durchfahren' },
+    { id: 2, name: '2×', desc: 'Zweimal durchfahren' },
+    { id: 3, name: '3×', desc: 'Dreimal durchfahren' },
+  ];
+  const roomCleanset = {};        // raumId -> [Saug, Wasser, Wdh, Reihenfolge, Modus, Route]
+  let customizedCleaning = false; // Geraeteschalter 4-26: true = jeder Raum nach seinen eigenen Werten
+  // Abweichungen NUR fuer die naechste Fahrt (Einheitlich-Betrieb): raumId -> {saug, wasser}.
+  // Gehen im selects-Feld mit und veraendern nichts dauerhaft. HA kann das genauso
+  // (clean_segment nimmt suction_level/water_volume auch als Liste je Raum).
+  const roomOverride = {};
+  // Der Wert, mit dem ein Raum tatsaechlich gereinigt wird: Abweichung, sonst der am Geraet
+  // gespeicherte cleanset-Wert. Damit gibt es EINE Wahrheit — die globalen Regler zeigen sie
+  // nur an (bzw. "Gemischt", wenn die gewaehlten Raeume verschieden sind).
+  const effSaug   = (id) => (roomOverride[id] && roomOverride[id].saug   !== undefined) ? roomOverride[id].saug
+                          : (roomCleanset[id] ? roomCleanset[id][0] : 1);
+  const effWasser = (id) => (roomOverride[id] && roomOverride[id].wasser !== undefined) ? roomOverride[id].wasser
+                          : (roomCleanset[id] ? roomCleanset[id][1] : 3);
+  // Was in EINEM Raum tatsaechlich passiert: individuell zaehlt sein cleanset, sonst der
+  // globale Modus. Steuert, welche Symbole im Badge ueberhaupt auftauchen.
+  const raumSaugt  = (id) => (customizedCleaning && roomCleanset[id])
+                           ? roomCleanset[id][4] !== 1 : modeSaugt(cleanMode);
+  const raumWischt = (id) => (customizedCleaning && roomCleanset[id])
+                           ? roomCleanset[id][4] !== 0 : modeWischt(cleanMode);
+  const raumWdh    = (id) => (customizedCleaning && roomCleanset[id]) ? (roomCleanset[id][2] || 1) : 1;
+  const cmd=(suffix,val)=>{ if(SOCK) SOCK.emit('setState','dreame.0.'+DID+'.'+suffix,val,()=>{}); };
+  let carpetSet=new Set();  // rohe Teppich-Zellen aus META.carpetPx (HA: carpet_pixels)
+  let carpetData=new Map(); // Zelle -> pxType (1=erkannt, 2=Nutzer-Teppich), wie HA carpet_data
+  let haHidden=new Set();   // in der App ausgeblendete Raeume (META.ha.hiddenSegments)
+  let activeSegs=new Set(); // Raeume des laufenden Auftrags (HA: active_segments aus "sa")
+  let zoneCleaning=false;   // HA: zone_cleaning (Zonen-/Punktreinigung laeuft)
+  // HA: _check_carpet Polygon-Teil — Ray-Casting in Weltkoordinaten
+  function pointInPolygon(x,y,poly){
+    let check=false; const n=poly.length;
+    for (let i=0,j=n-2;i<n;j=i,i+=2){
+      const sx=poly[i],sy=poly[i+1],tx=poly[j],ty=poly[j+1];
+      if (sx===x&&sy===y&&tx===x&&ty===y) return true;
+      if (sy===ty&&sy===y&&((sx>x&&tx<x)||(sx<x&&tx>x))) return true;
+      if ((sy<y&&ty>=y)||(sy>=y&&ty<y)){
+        const xx=sx+((y-sy)*(tx-sx))/(ty-sy);
+        if (xx===x) return true;
+        if (xx>x) check=!check;
+      }
+    }
+    return check;
+  }
+  // HA: _optimize_carpet_pixels — jeden Teppich-Pixel auf 4x3 aufblaehen (nur Raum-Zellen)
+  function optimizeCarpetPixels(){
+    const out=new Set();
+    for (const idx of carpetSet){
+      const px=idx%W, py=(idx-px)/W;
+      for (let xx=Math.max(0,px-1); xx<Math.min(px+3,W-1); xx++){
+        for (let yy=Math.max(0,py-1); yy<Math.min(py+2,He-1); yy++){
+          const t=raw[mapStart+yy*W+xx];
+          if (t>0 && t<=100) out.add(yy*W+xx);
+        }
+      }
+    }
+    return out;
+  }
+  // HA: render_carpets — carpet_data aufbauen (1:1-Reihenfolge)
+  function buildCarpetData(){
+    const out=new Map();
+    const ha=(META&&META.ha)||{};
+    // map.py 7744-7749 / 12281-12285: liegt der Karten-Ursprung auf dem Halbgitter
+    // (Lidar-Verschiebung aus device.py 3071-3085, kommt seit dem Adapter-Port im Header
+    // an), rechnet HA die Teppich-ZELLEN wieder vom vollen Gitter aus (left+offset) —
+    // Teppiche sind zellbasiert und muessen auf dem Pixelraster liegen.
+    // Python-Modulo ist immer positiv, JS nicht -> doppeltes Modulo.
+    let L=H.origin.x, T=H.origin.y;
+    if (((L%GS)+GS)%GS!==0 || ((T%GS)+GS)%GS!==0){ L+=GS/2; T+=GS/2; }
+    const cellVal=(x,y)=>raw[mapStart+y*W+x];
+    if (ha.detectedCarpets && ha.detectedCarpets.length){
+      let optimized=null;
+      for (const c of ha.detectedCarpets){
+        if (c.hidden) continue;
+        const xs=c.polygon.filter((_,i)=>i%2===0), ys=c.polygon.filter((_,i)=>i%2===1);
+        const x0=Math.max(0,Math.floor((Math.min(...xs)-L)/GS)), x1=Math.min(W-1,Math.ceil((Math.max(...xs)-L)/GS));
+        const y0=Math.max(0,Math.floor((Math.min(...ys)-T)/GS)), y1=Math.min(He-1,Math.ceil((Math.max(...ys)-T)/GS));
+        for (let x=x0;x<x1;x++) for (let y=y0;y<y1;y++){
+          const val=cellVal(x,y);
+          if (val<=0 || val>100) continue;               // _check_carpet Vorfilter
+          // _check_carpet 7783-7785: der Polygon-Test rechnet Zelle->Welt mit dimensions.left
+          // DIREKT (dem ggf. verschobenen Ursprung) — nicht mit dem korrigierten L von oben.
+          const wx=x*GS+H.origin.x, wy=y*GS+H.origin.y;
+          if (!pointInPolygon(wx,wy,c.polygon)) continue;
+          if (c.polygon.length>100 && carpetSet.size){   // grosses Polygon -> Pixel-Filter
+            if (optimized===null) optimized=optimizeCarpetPixels();
+            if (!optimized.has(y*W+x)) continue;
+          }
+          out.set(y*W+x,1);
+        }
+      }
+    } else if (carpetSet.size){
+      for (const idx of optimizeCarpetPixels()) out.set(idx,1);
+    }
+    // Raum-Material Teppich (floor_material 5-7): ganzen Raum markieren
+    if (META&&META.seg_inf){
+      for (const [id,si] of Object.entries(META.seg_inf)){
+        const m=si&&si.material;
+        if (m>4&&m<8){ const rid=+id;
+          for (let y=0;y<He;y++) for (let x=0;x<W;x++) if (cellVal(x,y)===rid) out.set(y*W+x,1);
+        }
+      }
+    }
+    // Nutzer-Teppiche (vw.addcpt): Rechtecke -> pxType 2
+    if (ha.carpets){
+      for (const r of ha.carpets){
+        if (!Array.isArray(r)||r.length<4) continue;
+        const x0=Math.max(0,Math.floor((Math.min(r[0],r[2])-L)/GS)), x1=Math.min(W-1,Math.ceil((Math.max(r[0],r[2])-L)/GS));
+        const y0=Math.max(0,Math.floor((Math.min(r[1],r[3])-T)/GS)), y1=Math.min(He-1,Math.ceil((Math.max(r[1],r[3])-T)/GS));
+        for (let x=x0;x<x1;x++) for (let y=y0;y<y1;y++){ const v=cellVal(x,y); if(v>0&&v<=100) out.set(y*W+x,2); }
+      }
+    }
+    // geloeschte Teppiche entfernen
+    if (ha.deletedCarpets){
+      for (const r of ha.deletedCarpets){
+        if (!Array.isArray(r)||r.length<4) continue;
+        const x0=Math.max(0,Math.floor((Math.min(r[0],r[2])-L)/GS)), x1=Math.min(W-1,Math.ceil((Math.max(r[0],r[2])-L)/GS));
+        const y0=Math.max(0,Math.floor((Math.min(r[1],r[3])-T)/GS)), y1=Math.min(He-1,Math.ceil((Math.max(r[1],r[3])-T)/GS));
+        for (let x=x0;x<x1;x++) for (let y=y0;y<y1;y++) out.delete(y*W+x);
+      }
+    }
+    return out;
+  }
+  let showChanges=false;   // "Änderungen"-Button: rot = seit Schnappschuss geändert
+  let showGrid=false;      // "Raster"-Knopf: Diagnose-Gitter + Fadenkreuze (s. drawGrid)
+  let changeSnap=null;     // Schnappschuss der Karte (beim Reinigungsstart bzw. erstem Laden)
+  const CHANGECOL=[230,40,40];
+  // Kopie des aktuellen Typ-Grids + seiner Welt-Lage merken
+  function takeChangeSnapshot(){
+    if (!raw || !W || !He) return;
+    changeSnap = { grid: raw.slice(mapStart, mapStart + W*He).slice(),
+                   left: H.origin.x, top: H.origin.y, W, He, gs: GS };
+  }
+  // Typ an derselben WELT-Position im Schnappschuss (Karte kann gewachsen/verschoben sein)
+  function snapTypeAt(x,y){
+    if (!changeSnap) return null;
+    const wx = H.origin.x + x*GS, wy = H.origin.y + y*GS;
+    const sx = Math.round((wx - changeSnap.left)/changeSnap.gs);
+    const sy = Math.round((wy - changeSnap.top)/changeSnap.gs);
+    if (sx<0||sy<0||sx>=changeSnap.W||sy>=changeSnap.He) return 0; // war ausserhalb = leer
+    return changeSnap.grid[sy*changeSnap.W + sx];
+  }
+
+  // Füllfarbe eines Raums je nach Auswahlzustand:
+  //  keine Auswahl -> normal; gewählt -> dunkler; nicht gewählt -> blasser
+  function roomFill(id){
+    const g = segGrp(id);
+    if (selectedRooms.size===0) return g[0];               // keine Auswahl -> normal (helle HA-Farbe)
+    if (selectedRooms.has(id))  return g[1];               // gewählt: kräftige HA-Schattierung
+    return mix(g[0],WHITE,0.5);                            // andere: blasser
+  }
+  // Label-Farbe/Stärke – bleibt immer gut lesbar (dunkle Schrift + weißer Schatten via CSS)
+  function labelStyle(id){
+    const dark = mix(segGrp(id)[1],BLACK,0.5); // dunkle Raumfarbe = gut lesbar
+    // Schriftgewicht IMMER gleich (800) — nur Farbe/Deckkraft zeigen die Auswahl an.
+    // (Vorher wechselte es auf 700, wenn ein anderer Raum markiert war -> stoerendes Zappeln.)
+    if (selectedRooms.has(id))  return { fill:rgbCss(mix(segGrp(id)[1],BLACK,0.6)), weight:'800', opacity:'1' };
+    if (selectedRooms.size>0)   return { fill:rgbCss(dark), weight:'800', opacity:'0.65' };
+    return { fill:rgbCss(dark), weight:'800', opacity:'1' };
+  }
+  function updateLabels(){
+    for (const id of Object.keys(labelEls)){ const s=labelStyle(+id), el=labelEls[id];
+      el.setAttribute('fill', s.fill); el.style.fontWeight=s.weight; el.style.opacity=s.opacity; }
+    for (const id in rowEls){ rowEls[id].classList.toggle('sel', selectedRooms.has(+id)); }
+  }
+
+  // ===== Raum-Badges auf der Karte =====
+  // Masse in Bildschirmpixeln (die Marke wird gegen den Zoom skaliert, s. skaliereMarken).
+  const BDG = { hoehe:22, ikon:14, ziffer:7, luecke:2, abstand:8, rand:8, tipp:44 };
+
+  /** Ein Icon aus UI_ICONS als SVG-Gruppe, auf px-Kantenlaenge gebracht. */
+  function svgIkon(name, px, klasse){
+    const d = (window.UI_ICONS||{})[name]; if (!d) return null;
+    const g = document.createElementNS(NS,'g');
+    if (klasse) g.setAttribute('class', klasse);
+    g.setAttribute('fill','none'); g.setAttribute('stroke','currentColor');
+    // Strichstaerke gegen die Verkleinerung anheben, sonst wird das Icon fadendünn
+    g.setAttribute('stroke-width', 2.4); g.setAttribute('stroke-linecap','round');
+    g.setAttribute('stroke-linejoin','round');
+    g.setAttribute('transform', `translate(0 ${-px/2}) scale(${px/24})`);
+    g.innerHTML = d;
+    return g;
+  }
+
+  /**
+   * Badge eines Raums: was ihn erwartet, in Symbolen. Der Modus zeigt sich dadurch,
+   * WELCHE Symbole da sind — kein Tropfen heisst, es wird nicht gewischt.
+   * Das ganze Badge ist die Schaltflaeche fuer die Raum-Einstellungen.
+   */
+  function baueBadge(id){
+    const teile = [];
+    if (raumSaugt(id))  teile.push(['saugen', String(effSaug(id) + 1)]);   // Anzeige 1-4, intern 0-3
+    if (raumWischt(id)) teile.push(['wasser', String(effWasser(id))]);
+    if (raumWdh(id) > 1) teile.push(['wiederholung', String(raumWdh(id))]);
+    teile.push(['einstellungen', null]);                                    // Hinweis: hier tippen
+
+    let breite = BDG.rand * 2;
+    for (const [, wert] of teile){
+      breite += BDG.ikon + BDG.abstand;
+      if (wert) breite += BDG.luecke + wert.length * BDG.ziffer;
+    }
+    breite -= BDG.abstand;
+
+    const g = document.createElementNS(NS,'g');
+    g.setAttribute('class','rbadge'); g.dataset.raum = id;
+    const x0 = -breite / 2;
+    const kasten = (klasse, x, y, w, h, r) => {
+      const e = document.createElementNS(NS,'rect');
+      e.setAttribute('class', klasse); e.setAttribute('x', x); e.setAttribute('y', y);
+      e.setAttribute('width', w); e.setAttribute('height', h);
+      if (r) { e.setAttribute('rx', r); e.setAttribute('ry', r); }
+      g.appendChild(e);
+    };
+    // Trefferflaeche zuerst und groesser als die Pille: am Tablet zaehlt die Flaeche
+    kasten('hit', x0 - 6, -BDG.tipp/2, breite + 12, BDG.tipp);
+    kasten('pille', x0, -BDG.hoehe/2, breite, BDG.hoehe, BDG.hoehe/2);
+
+    let x = x0 + BDG.rand;
+    for (const [name, wert] of teile){
+      const ik = svgIkon(name, BDG.ikon, name === 'einstellungen' ? 'zr' : null);
+      if (ik){
+        ik.setAttribute('transform',
+          `translate(${x} ${-BDG.ikon/2}) scale(${BDG.ikon/24})`);
+        g.appendChild(ik);
+      }
+      x += BDG.ikon;
+      if (wert){
+        const t = document.createElementNS(NS,'text');
+        t.setAttribute('x', x + BDG.luecke); t.setAttribute('y', 0);
+        t.textContent = wert; g.appendChild(t);
+        x += BDG.luecke + wert.length * BDG.ziffer;
+      }
+      x += BDG.abstand;
+    }
+    return g;
+  }
+
+  /** Badges neu aufbauen — nur fuer gewaehlte Raeume, sonst wird die Karte unruhig. */
+  function updateRoomBadges(){
+    for (const id of Object.keys(markEls)){
+      const g = markEls[id], alt = g.querySelector('.rbadge');
+      if (alt) alt.remove();
+      if (!selectedRooms.has(+id) || hidden.has(+id)) continue;
+      const b = baueBadge(+id);
+      b.setAttribute('transform', `translate(0 ${BDG.hoehe})`);   // unter den Raumnamen
+      g.appendChild(b);
+    }
+  }
+
+  /**
+   * Haelt Name und Badge in konstanter Bildschirmgroesse. Eine SVG-Einheit ist cell*scale
+   * Bildschirmpixel — mit dem Kehrwert skaliert, entspricht innen 1 Einheit 1 Pixel.
+   */
+  let markScale = null;
+  function skaliereMarken(erzwingen){
+    if (!erzwingen && markScale === scale) return;
+    markScale = scale;
+    const s = 1 / (cell * scale);
+    for (const id of Object.keys(markEls)){
+      const g = markEls[id];
+      g.setAttribute('transform', `translate(${g.dataset.x} ${g.dataset.y}) scale(${s})`);
+    }
+    skaliereStationHit();
+  }
+  function selectRoom(seg){
+    if (selectedRooms.has(seg)) selectedRooms.delete(seg); else selectedRooms.add(seg); // Klick toggelt
+    drawFills(); updateLabels(); updateCleanPanel();
+  }
+  // ===== Reinigungs-Panel =====
+  const SUCT_NAMES = ['Leise','Standard','Stark','Turbo'];
+  // Beschriftung der Saugstaerke: intern 0-3, angezeigt 1-4 — sonst laese sich die
+  // niedrigste Stufe im Karten-Badge als "aus". Zahl und Wort zusammen, damit die
+  // Ziffer im Badge und der Name im Dialog erkennbar dasselbe meinen.
+  const suctText = (v) => `${v + 1} · ${SUCT_NAMES[v] || v}`;
+  /** Fuellstand links vom Daumen als Prozent am Element mitfuehren (siehe --fill im CSS). */
+  function reglerFuellung(i){
+    const min=+i.min, max=+i.max;
+    i.style.setProperty('--fill', (max>min ? (i.value-min)/(max-min)*100 : 0)+'%');
+  }
+  function updateCleanPanel(){
+    const nm=document.getElementById('selRoomName');
+    const gewaehlt=[...selectedRooms].sort((a,b)=>a-b);
+    updateStartPause();   // setzt Symbol und Sperre des Start/Pause-Knopfs
+    // Welche Raeume gewaehlt sind und was sie erwartet, steht in der Karte am Raum selbst
+    // (siehe baueBadge) — hier nur noch, OB etwas gewaehlt ist.
+    nm.textContent = gewaehlt.length
+      ? (gewaehlt.length === 1 ? '1 Raum gewählt' : gewaehlt.length + ' Räume gewählt')
+      : 'Kein Raum gewählt';
+
+    // Globale Regler ZEIGEN den Stand der gewaehlten Raeume: gleicher Wert -> dieser Wert,
+    // unterschiedliche -> "Gemischt (min–max)". Verstellen setzt dann alle auf einmal.
+    if (!customizedCleaning && gewaehlt.length){
+      const zeig = (schieber, label, werte, text) => {
+        const el=document.getElementById(schieber), lb=document.getElementById(label);
+        if(!el||!lb) return;
+        const min=Math.min(...werte), max=Math.max(...werte);
+        el.value = min; reglerFuellung(el);
+        lb.textContent = (min===max) ? text(min) : `Gemischt (${text(min)}–${text(max)})`;
+      };
+      zeig('suction','suctionVal', gewaehlt.map(effSaug),   suctText);
+      zeig('water','waterVal',     gewaehlt.map(effWasser), (v)=>String(v));
+    }
+
+    // Betriebsart: entweder globale Regler ODER die Werte je Raum — nie beides,
+    // denn im Individuell-Betrieb ignoriert das Geraet die globalen Werte.
+    const cv=document.getElementById('custVal');
+    if (cv) cv.textContent = customizedCleaning ? 'Individuell pro Raum' : 'Einheitlich';
+    const go=document.getElementById('globalOpts'), gs=document.getElementById('globalSliders'),
+          ih=document.getElementById('indivHint');
+    if (go) go.style.display = customizedCleaning ? 'none' : '';
+    if (gs) gs.style.display = customizedCleaning ? 'none' : '';
+    if (ih) ih.style.display = customizedCleaning ? '' : 'none';
+    // Die Badges zeigen dieselben Werte — hier und nicht in updateLabels(), weil sich der
+    // Inhalt auch OHNE Auswahlwechsel aendert: Modus, Betriebsart, globale Regler, und
+    // Meldungen vom Geraet (cleanset, customized-cleaning) laufen alle hier durch.
+    updateRoomBadges();
+  }
+  /**
+   * Auswahl-Overlay. Bewusst allgemein gehalten: dieselbe Funktion soll spaeter auch die
+   * Einstellungen je Raum anbieten (Modus / Naesse / Saugstaerke), damit es im Widget nur
+   * EIN Bedienmuster gibt.
+   * @param titel   Ueberschrift im Overlay
+   * @param opts    [{id, name, desc}]
+   * @param aktiv   aktuell gewaehlte id
+   * @param onPick  Rueckruf mit der gewaehlten id
+   */
+  function openPicker(titel, opts, aktiv, onPick){
+    const ovl=document.getElementById('pickOvl'), box=document.getElementById('pickOpts');
+    document.getElementById('pickTitle').textContent = titel;
+    // reine Auswahl -> nichts zu speichern (ein Tap waehlt und schliesst)
+    document.getElementById('pickSave').style.display='none';
+    box.innerHTML='';
+    for (const o of opts){
+      const b=document.createElement('button');
+      // o.aus = gerade nicht moeglich: sichtbar bleiben (der Grund steht in o.desc),
+      // aber nicht ausloesen. Ohne das schloss sich das Fenster kommentarlos und es
+      // passierte nichts — das sah aus wie ein Fehler.
+      b.className='opt'+(o.id===aktiv?' on':'')+(o.aus?' aus':'');
+      b.innerHTML=`<span class="ot"></span><span class="od"></span>`;
+      b.firstChild.textContent=o.name;
+      b.lastChild.textContent=o.desc||'';
+      if (o.aus) b.disabled = true;
+      else b.onclick=()=>{ closePicker(); onPick(o.id); };
+      box.appendChild(b);
+    }
+    ovl.classList.add('open');
+  }
+  function closePicker(){ document.getElementById('pickOvl').classList.remove('open'); }
+
+  /**
+   * Overlay mit den Einstellungen EINES RAUMS.
+   *
+   * Arbeitet auf einem ENTWURF: Aenderungen wirken erst mit "Speichern". Vorher passiert
+   * nichts am Geraet — deshalb kann "Abbrechen" auch wirklich verwerfen. (Vorher wurde
+   * sofort geschrieben, dann war "Abbrechen" eine leere Versprechung.)
+   *
+   * Zwei Betriebsarten, gleiche Bedienung:
+   *  - Individuell (customized-cleaning AN): Speichern schreibt in die cleanset-States;
+   *    der Adapter schickt sie ans Geraet, sie bleiben dort gespeichert. Modus je Raum moeglich.
+   *  - Einheitlich (AUS): Speichern merkt die Werte nur lokal (roomOverride) und gibt sie beim
+   *    Start im selects-Feld mit — gilt nur fuer diese Fahrt. Kein Modus, der ist global.
+   */
+  function openRoomSettings(roomId){
+    const dauerhaft = customizedCleaning;
+    const cs = roomCleanset[roomId] || [1, 3, 1, 0, 0, 546];
+    const name = roomName(roomId, META && META.seg_inf);
+    // Entwurf: Ausgangswerte = das, womit der Raum aktuell gereinigt wuerde
+    const start = {
+      saug:   dauerhaft ? cs[0] : effSaug(roomId),
+      wasser: dauerhaft ? cs[1] : effWasser(roomId),
+      wdh:    cs[2],
+      modus:  cs[4],
+    };
+    const entwurf = { ...start };
+    const geaendert = () => Object.keys(start).some((k) => start[k] !== entwurf[k]);
+
+    const box = document.getElementById('pickOpts');
+
+    const zeichne = () => {
+      // Titel hier setzen, nicht nur einmal: nach einer Unter-Auswahl (Modus/Wiederholung)
+      // steht sonst noch deren Ueberschrift im Fenster.
+      document.getElementById('pickTitle').textContent = name;
+      box.innerHTML = '';
+      const zeile = (label, wertText, onClick) => {
+        const r = document.createElement('div');
+        r.className = 'pickrow'; r.style.marginBottom = '8px';
+        r.innerHTML = '<span class="pk"></span><span class="pv"><span class="pvt"></span>'
+          + uiIcon('weiter', 16, 'chev') + '</span>';
+        r.querySelector('.pk').textContent = label;
+        r.querySelector('.pvt').textContent = wertText;
+        r.onclick = onClick; box.appendChild(r);
+      };
+      // Gleiches Muster wie die globalen Regler im Panel: waehrend des Ziehens NUR
+      // beschriften, den Wert erst beim Loslassen uebernehmen. fmt = Beschriftung
+      // (Saugstaerke als Wort, Wassermenge als Zahl).
+      const regler = (label, min, max, val, onDone, fmt) => {
+        const zeig = fmt || ((v) => v);
+        const w = document.createElement('div'); w.style.margin = '2px 0 12px';
+        const l = document.createElement('label'); l.className = 'slabel';
+        l.textContent = `${label}: `;
+        const b = document.createElement('b'); b.textContent = zeig(val); l.appendChild(b);
+        const i = document.createElement('input');
+        i.type = 'range'; i.min = min; i.max = max; i.step = 1; i.value = val;
+        reglerFuellung(i);
+        i.oninput  = () => { b.textContent = zeig(+i.value); };
+        i.onchange = () => { onDone(+i.value); aktualisiereKnoepfe(); };
+        w.append(l, i); box.appendChild(w);
+      };
+
+      if (dauerhaft) {
+        zeile('Modus', (ROOM_MODES.find((m) => m.id === entwurf.modus) || ROOM_MODES[0]).name,
+          () => openPicker(name + ' — Modus', ROOM_MODES, entwurf.modus,
+            (id) => { entwurf.modus = id; zeichne(); }));
+      }
+      regler('Saugstärke', 0, 3, entwurf.saug, (v) => { entwurf.saug = v; },
+        suctText);
+      regler('Wassermenge', 1, 32, entwurf.wasser, (v) => { entwurf.wasser = v; });
+      if (dauerhaft) {
+        zeile('Wiederholung', (ROOM_REPEATS.find((r) => r.id === entwurf.wdh) || ROOM_REPEATS[0]).name,
+          () => openPicker(name + ' — Wiederholung', ROOM_REPEATS, entwurf.wdh,
+            (id) => { entwurf.wdh = id; zeichne(); }));
+      }
+
+      const hint = document.createElement('div');
+      hint.className = 'slabel'; hint.style.cssText = 'opacity:.65;margin-top:4px';
+      hint.textContent = dauerhaft
+        ? 'Mit „Speichern“ bleiben diese Einstellungen am Roboter gespeichert.'
+        : 'Gilt nur für diese Reinigung. Der Modus gilt global für alle Räume.';
+      box.appendChild(hint);
+      aktualisiereKnoepfe();
+      // Nach einer Unter-Auswahl (Modus/Saugstaerke/Wiederholung) hat openPicker das Overlay
+      // geschlossen — zeichne() stellt das Raum-Fenster deshalb komplett wieder her, offen.
+      document.getElementById('pickOvl').classList.add('open');
+    };
+
+    // Speichern nur anbieten, wenn wirklich etwas anders ist
+    const btnSave = document.getElementById('pickSave');
+    const aktualisiereKnoepfe = () => {
+      btnSave.style.display = '';
+      btnSave.disabled = !geaendert();
+    };
+
+    btnSave.onclick = () => {
+      if (dauerhaft) {
+        // nur die wirklich geaenderten Felder schreiben — jedes loest einen Geraetebefehl aus
+        const felder = { Level: 'saug', WaterVolume: 'wasser', Repeat: 'wdh', CleaningMode: 'modus' };
+        const pos    = { Level: 0, WaterVolume: 1, Repeat: 2, CleaningMode: 4 };
+        const c = (roomCleanset[roomId] || cs).slice();
+        for (const [feld, k] of Object.entries(felder)) {
+          if (entwurf[k] !== start[k]) { cmd(`map.cleanset.${roomId}.${feld}`, entwurf[k]); c[pos[feld]] = entwurf[k]; }
+        }
+        roomCleanset[roomId] = c;
+      } else {
+        const o = roomOverride[roomId] || (roomOverride[roomId] = {});
+        o.saug = entwurf.saug; o.wasser = entwurf.wasser;
+      }
+      closePicker(); updateCleanPanel();
+    };
+
+    zeichne();
+  }
+
+  /**
+   * Bedien-Icon als SVG-Markup (Daten aus icons_ui.js, erzeugt von extractLucide.js).
+   * Faerbt sich ueber currentColor, laesst sich also behandeln wie Text.
+   * @param name   Schluessel in UI_ICONS
+   * @param px     Kantenlaenge
+   * @param extra  zusaetzliche CSS-Klasse (z.B. 'chev', 'ic-an')
+   */
+  function uiIcon(name, px=16, extra=''){
+    const d = (window.UI_ICONS||{})[name];
+    if (!d) return '';
+    return `<svg class="ico ${extra}" width="${px}" height="${px}" viewBox="0 0 24 24" fill="none"`
+      + ` stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"`
+      + ` aria-hidden="true">${d}</svg>`;
+  }
+  /**
+   * Setzt die Icons in das statische Markup. Bewusst hier und nicht im HTML: die Pfade
+   * stehen in icons_ui.js, das Markup soll nur die Beschriftung tragen.
+   */
+  function setzeIcons(){
+    // Knoepfe, die NUR aus einem Icon bestehen
+    for (const [id, name] of [['gearBtn','einstellungen'], ['z-in','zoomEin'],
+                              ['z-out','zoomAus'], ['z-reset','zoomReset']]){
+      const el = document.getElementById(id); if (el) el.innerHTML = uiIcon(name, 17);
+    }
+    // Nur Symbol, Bedeutung steht in title/aria-label. c-start fehlt hier mit Absicht:
+    // der wechselt zwischen Start und Pause und wird von updateStartPause() gesetzt.
+    for (const [id, name] of [['c-stop','stop'], ['c-home','home']]){
+      const el = document.getElementById(id); if (el) el.innerHTML = uiIcon(name, 20);
+    }
+    updateStartPause();
+    // Ansicht-Schalter tragen beide Zustaende; das CSS blendet nach .off um
+    for (const b of document.querySelectorAll('.tgl')){
+      b.insertAdjacentHTML('afterbegin', uiIcon('anAn',14,'ic-an') + uiIcon('anAus',14,'ic-aus'));
+    }
+    // Pfeil in den festen Auswahlzeilen (die dynamischen bekommen ihn in zeile())
+    for (const pv of document.querySelectorAll('.pickrow .pv')){
+      pv.insertAdjacentHTML('beforeend', uiIcon('weiter', 16, 'chev'));
+    }
+  }
+  function setupCleanPanel(){
+    const suction=document.getElementById('suction'), sVal=document.getElementById('suctionVal');
+    const water=document.getElementById('water'), wVal=document.getElementById('waterVal');
+    const modeRow=document.getElementById('modeRow'), modeVal=document.getElementById('modeVal');
+    const applyMode=()=>{ modeVal.textContent = modeOf(cleanMode).name; };
+    // updateCleanPanel mit: ob "Wasser X" am Chip steht, haengt vom gewaehlten Modus ab
+    modeRow.onclick=()=> openPicker('Reinigungsmodus', CLEAN_MODES, cleanMode,
+      (id)=>{ cleanMode=id; applyMode(); updateCleanPanel(); });
+    // Waehrend des Ziehens nur beschriften; beim LOSLASSEN gilt der Wert fuer alle gewaehlten
+    // Raeume (setzt deren Abweichung). Einzeln nachjustieren geht danach ueber das ⚙ am Chip.
+    suction.oninput=()=>{ sVal.textContent=suctText(+suction.value); };
+    water.oninput  =()=>{ wVal.textContent=water.value; };
+    // Fuellstand fuer JEDEN Regler mitziehen — auch fuer die erst spaeter erzeugten
+    // im Raum-Fenster, deshalb einmal zentral statt an jedem Regler einzeln.
+    document.addEventListener('input',(e)=>{
+      if (e.target && e.target.type==='range') reglerFuellung(e.target);
+    }, true);
+    reglerFuellung(suction); reglerFuellung(water);
+    const fuerAlle=(feld,wert)=>{
+      for (const id of selectedRooms){
+        const o = roomOverride[id] || (roomOverride[id] = {});
+        o[feld] = wert;
+      }
+      updateCleanPanel();
+    };
+    suction.onchange=()=> fuerAlle('saug',   +suction.value);
+    water.onchange  =()=> fuerAlle('wasser', +water.value);
+    // Betriebsart umschalten = Geraeteschalter 4-26. Wird sofort gesetzt, damit Widget und
+    // App denselben Zustand zeigen (kein verstecktes Eigenleben bis zum Start).
+    document.getElementById('custRow').onclick=()=> openPicker('Reinigung', [
+      { id:0, name:'Einheitlich',          desc:'Ein Modus für alle gewählten Räume' },
+      { id:1, name:'Individuell pro Raum', desc:'Jeder Raum nutzt seine gespeicherten Einstellungen' },
+    ], customizedCleaning?1:0, (id)=>{
+      customizedCleaning = !!id;
+      cmd('remote.customized-cleaning', customizedCleaning);
+      updateCleanPanel();
+    });
+    // Ein Knopf fuer Start / Fortsetzen / Pause — wie HAs start_pause (device.py 4495-4501).
+    // Der Unterschied zu HA: dort startet start() immer die Auto-Reinigung, bei uns die
+    // Reinigung der gewaehlten Raeume. Fortsetzen ist auch bei HA nur das nackte START.
+    document.getElementById('c-start').onclick=()=>{
+      if (!wuerdeStarten()){                 // laeuft -> anhalten
+        setzeAnnahme(true);
+        cmd('remote.pause', true);
+        return;
+      }
+      if (geraetGestartet()){                // pausiert oder auf dem Rueckweg -> fortsetzen
+        setzeAnnahme(false);
+        cmd('remote.start-clean', true);     // HA: DreameVacuumAction.START (2-1)
+        return;
+      }
+      if (selectedRooms.size===0) return;
+      setzeAnnahme(false);
+      takeChangeSnapshot(); // Referenz für den "Änderungen"-Button: Karte beim Start merken
+      // Cleaning mode ROH via customCommand (umgeht den Compound-Blocker, wie dreamehome S4P23E1):
+      // 5120=Saugen&Wischen, 5121=nur Wischen, 5122=nur Saugen, 5123=Wischen nach Saugen
+      // Im Individuell-Betrieb nimmt das Geraet die gespeicherten Werte je Raum und ignoriert
+      // globalen Modus/Saugstaerke/Wasser — dann schicken wir sie erst gar nicht mit.
+      const suct = +suction.value;                                  // 0..3
+      const wasser = modeWischt(cleanMode) ? +water.value : 0;      // 1..32, 0 = kein Wischen
+      if (!customizedCleaning){
+        cmd('remote.customCommand', JSON.stringify([{did:DID,siid:4,piid:23,value:cleanMode}]));
+        cmd('remote.suction-level', suct);
+        // Naesse 1..32 gehoert an wetness-level (28-1). Frueher ging sie an water-volume
+        // (4-5) — das ist die ALTE dreistufige Groesse (1=niedrig, 2=mittel, 3=hoch), die
+        // HA aus der Naesse nur ableitet (map.py 3467-3472). Ein Wert wie 16 wurde dort
+        // nie bestaetigt (ack:false) und blieb wirkungslos.
+        if (wasser) cmd('remote.wetness-level', wasser);
+      }
+      // Alle gewählten Räume: [RaumID, Wdh, Saug, Wasser(0=kein Wischen), idx] — idx 1..n wie dreamehome/HA
+      // Je Raum darf abgewichen werden (nur diese Fahrt, Einheitlich-Betrieb): HA kann das
+      // genauso, dort nimmt clean_segment suction_level/water_volume auch als Liste je Raum.
+      const selects = [...selectedRooms].sort((a,b)=>a-b).map((id,i)=>{
+        // Einheitlich: je Raum sein effektiver Wert (Abweichung, sonst der gespeicherte).
+        // Individuell: das Geraet nimmt ohnehin das cleanset — Werte hier egal.
+        const s = customizedCleaning ? suct   : effSaug(id);
+        const w = !modeWischt(cleanMode) ? 0 : (customizedCleaning ? wasser : effWasser(id));
+        return [id, 1, s, w, i+1];
+      });
+      cmd('remote.start-custom-clean', JSON.stringify([{piid:1,value:18},{piid:10,value:JSON.stringify({selects})}]));
+      selectedRooms.clear(); // Auswahl nach dem Start leeren, damit sie nicht beim naechsten Mal "vergessen" mitläuft
+      // Abweichungen gelten laut Beschriftung nur fuer DIESE Fahrt -> danach verwerfen,
+      // sonst wirken sie beim naechsten Start unsichtbar weiter.
+      for (const k of Object.keys(roomOverride)) delete roomOverride[k];
+      drawFills(); updateLabels(); updateCleanPanel();
+    };
+    // Stop beendet den GANZEN Auftrag. Waehrend eines Waschgangs bleibt der Wischmopp
+    // dabei halb gewaschen zurueck — deshalb hier nachfragen statt sofort abbrechen.
+    // (Anhalten und spaeter fortsetzen geht ueber das Stationsmenue.)
+    document.getElementById('c-stop').onclick=()=>{
+      if (VST.wash === WASH.WASHING){
+        // Nur EINE Option: der ohnehin vorhandene "Abbrechen"-Knopf ist das Gegenstueck.
+        // Zwei Eintraege mit dem Wort "abbrechen" meinten sonst genau Gegenteiliges.
+        openPicker('Mopp wird gerade gewaschen', [
+          { id:'ja', name:'Waschgang beenden', desc:'Der Wischmopp bleibt ungewaschen und nass' },
+        ], null, (id)=>{ if (id==='ja') cmd('remote.stop', true); });
+        return;
+      }
+      cmd('remote.stop', true);
+    };
+    document.getElementById('c-home').onclick=()=> cmd('remote.return-to-dock', true);
+    // Overlay schliessen: Abbrechen, Klick auf den dunklen Hintergrund, Esc
+    document.getElementById('pickCancel').onclick=closePicker;
+    document.getElementById('pickOvl').onclick=(e)=>{ if(e.target.id==='pickOvl') closePicker(); };
+    document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') closePicker(); });
+    applyMode(); updateCleanPanel();
+  }
+  // Klick-Koordinaten -> Raum-ID (Canvas ist Y-gespiegelt; wrap ist per translate/scale transformiert)
+  function hitRoom(clientX, clientY){
+    const r=stage.getBoundingClientRect();
+    const cxp=(clientX-r.left-tx)/scale, cyp=(clientY-r.top-ty)/scale; // Canvas-Pixel (MAPW×MAPH)
+    const ox=Math.floor(cxp/cell), oy=Math.floor(cyp/cell);
+    if (ox<0||oy<0||ox>=W||oy>=He) return null;
+    const t=raw[mapStart + (He-1-oy)*W + ox];
+    if (isRoom(t) && !hidden.has(t) && !haHidden.has(t) && knownRoom(t)) return t;
+    return null;
+  }
+
+  const toScreen=(px,py)=>[px, He-1-py]; // fuer ZELL-Indizes (Labels/Zentroide)
+  // Welt(mm) -> Bild, exakt wie HA MapImageDimensions.to_img (types.py):
+  //   x = (wx - left) / grid            y = ((He*grid - 1) - (wy - top)) / grid
+  // (nicht He-1-(wy-top)/grid — das war ~1 Zelle daneben: der Spur-/Marker-Versatz)
+  const wS=(wx,wy)=>[
+    (wx-H.origin.x)/GS,
+    ((He*GS - 1) - (wy-H.origin.y))/GS,
+  ];
+
+  // ---- Karte dekodieren ----
+  async function decode(cloudStr){
+    const cloud = JSON.parse(cloudStr);
+    let ms = cloud.mapstr[0].map;
+    const ci = ms.indexOf(',');
+    if (ci>0 && /^[A-Za-z0-9+\/_-]+$/.test(ms.slice(0,ci)) && ci>100) ms = ms.slice(0,ci);
+    raw = await inflate(b64ToU8(ms));
+    const dv = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+    H = { gridSize:dv.getInt16(17,true), width:dv.getInt16(19,true), height:dv.getInt16(21,true),
+          origin:{x:dv.getInt16(23,true), y:dv.getInt16(25,true)} };
+    // Roboterposition aus dem Header DIESES Pakets (Offset 5/7; 32767 = keine Position).
+    // Wichtig: sie gehoert zum selben Paket wie die Spur und kann deshalb nie veraltet
+    // sein — anders als die Variable aus dem separaten map.robot-Ereignis, das in
+    // beliebiger Reihenfolge eintrifft.
+    const hrx=dv.getInt16(5,true), hry=dv.getInt16(7,true);
+    H.robot = (hrx===32767 && hry===32767) ? null : [hrx,hry];
+    W=H.width; He=H.height; GS=H.gridSize; mapStart=27;
+    MAPW=W*cell; MAPH=He*cell; cv.width=MAPW; cv.height=MAPH; off.width=W; off.height=He;
+    const mapEnd=mapStart+W*He;
+    META={}; try{ META=JSON.parse(new TextDecoder().decode(raw.subarray(mapEnd))); }catch(e){}
+    haHidden = hiddenSegs();
+    // Raum-Zentroide + Grenzen
+    rooms={};
+    for (let y=0;y<He;y++) for (let x=0;x<W;x++){
+      const t=raw[mapStart+y*W+x]; // Byte = Typ
+      // Raum = nur Segmente aus der gespeicherten Raumstruktur (seg_inf) — wie HA.
+      // Vorlaeufige Live-Nummern (z.B. 57/59/60 waehrend der Fahrt) sind KEINE Raeume.
+      if (isRoom(t) && !haHidden.has(t) && knownRoom(t)){
+        const r=rooms[t]||(rooms[t]={sumX:0,sumY:0,count:0,minX:x,maxX:x,minY:y,maxY:y});
+        if(x<r.minX)r.minX=x; if(x>r.maxX)r.maxX=x; if(y<r.minY)r.minY=y; if(y>r.maxY)r.maxY=y;
+        r.sumX+=x; r.sumY+=y; r.count++;
+      }
+    }
+    // Mini-Fragmente (Rausch der Live-Karte) aussortieren -> nicht als eigener Raum
+    carpetSet = new Set(META.carpetPx || []); // HA: carpet_pixels
+    carpetData = buildCarpetData();
+    // Farb-Indizes exakt wie die App: vom Adapter berechnet (HAs set_segment_color_index)
+    roomColorIdx = (META.ha && META.ha.colorIndex) || {};
+    // Laufender Auftrag: welche Raeume gehoeren dazu (HA active_segments / zone_cleaning)
+    activeSegs = new Set((META.ha && META.ha.activeSegments) || []);
+    zoneCleaning = !!(META.ha && META.ha.zoneCleaning);
+    computeIconSizes(); // Icon-Groesse haengt an der Kartengroesse (HA map.py 9664)
+  }
+
+  function drawFills(){
+    const img = octx.createImageData(W,He);
+    // Wände gehoeren keinem Raum (Typ WALL ohne Segment-Info). Beim Ausblenden eines
+    // Raums sollen seine Waende mitverschwinden: eine Wand-Zelle bleibt nur sichtbar,
+    // wenn in ihrer Nachbarschaft (Radius 2) noch sichtbarer Raum/Boden liegt.
+    let wallVisible=null;
+    if (hidden.size){
+      wallVisible=new Set();
+      for (let y=0;y<He;y++) for (let x=0;x<W;x++){
+        if (raw[mapStart+y*W+x]!==PT.WALL) continue;
+        let vis=false;
+        for (let dy=-2;dy<=2&&!vis;dy++) for (let dx=-2;dx<=2&&!vis;dx++){
+          const nx=x+dx, ny=y+dy;
+          if (nx<0||ny<0||nx>=W||ny>=He) continue;
+          const t2=raw[mapStart+ny*W+nx];
+          if ((isRoom(t2)&&!hidden.has(t2)) || t2===PT.FLOOR || t2===PT.NEW_SEGMENT || t2===PT.UNKNOWN) vis=true;
+        }
+        if (vis) wallVisible.add(y*W+x);
+      }
+    }
+    for (let y=0;y<He;y++) for (let x=0;x<W;x++){
+      const t=raw[mapStart+y*W+x]; // Byte = Typ
+      const di=((He-1-y)*W + x)*4;
+      // Räume respektieren Ausblenden; Boden/Wand/frisch-gescannt immer zeichnen
+      if (isRoom(t) && hidden.has(t)) continue;
+      if (t===PT.WALL && wallVisible && !wallVisible.has(y*W+x)) continue; // Wand ohne sichtbaren Nachbar-Raum
+      // Raumfarbe 1:1 wie HA (map.py 9156-9169) — Reihenfolge der Zweige ist dieselbe:
+      //   hidden_segment > (zone_cleaning-Fallback) > passive_segment > segment[color_index][0]
+      let c;
+      if (isRoom(t) && haHidden.has(t)) c = HIDDENCOL; // in der App ausgeblendet -> HA hidden_segment
+      else if (isRoom(t) && !knownRoom(t)) c = NEWSEGCOL; // vorlaeufiges Live-Segment -> "frisch gescannt" (wie HA)
+      // HA ueberspringt bei zone_cleaning die Segment-Einfaerbung komplett; beim Zeichnen
+      // greift dann der Fallback area_colors.get(px_type, ...) -> NEW_SEGMENT (map.py 9215-9217).
+      else if (isRoom(t) && zoneCleaning) c = NEWSEGCOL;
+      // Laeuft ein Auftrag: Raeume des Auftrags in normaler Farbe, alle anderen ausgegraut
+      // (map.py 9164: active_segments and k not in active_segments -> passive_segment).
+      // Unsere Klick-Auswahl-Faerbung tritt dann zurueck — sie gilt nur, wenn nichts laeuft.
+      else if (isRoom(t) && activeSegs.size) c = activeSegs.has(t) ? segGrp(t)[0] : PASSIVECOL;
+      else if (isRoom(t)) c = roomFill(t); // Raum: Farbe je nach Auswahl (eigenes Feature)
+      else c = typeFill(t);
+      // "Änderungen": alles was sich seit dem Schnappschuss geändert hat -> ROT
+      if (showChanges && changeSnap && t !== snapTypeAt(x,y)) c = CHANGECOL;
+      if (c){ img.data[di]=c[0]; img.data[di+1]=c[1]; img.data[di+2]=c[2]; img.data[di+3]=255; }
+    }
+    octx.putImageData(img,0,0);
+    ctx.imageSmoothingEnabled=false; // wichtig: Canvas-Resize setzt das zurück -> hier erneut aus (harte Kanten)
+    ctx.clearRect(0,0,MAPW,MAPH); ctx.drawImage(off,0,0,MAPW,MAPH);
+    // Teppiche wie HA (floor_scale=2, render_carpets): pro Zelle werden die DIAGONALEN
+    // Halbzellen (oben-links + unten-rechts) abgedunkelt -> Schachbrettmuster.
+    if (carpetData.size){
+      const h2=cell/2;
+      for (const [idx,pxType] of carpetData){
+        const ct=raw[mapStart+idx];
+        if (isRoom(ct) && hidden.has(ct)) continue; // Teppich in ausgeblendetem Raum
+        ctx.fillStyle = `rgba(0,0,0,${pxType===2?CARPET_USER_ALPHA:CARPET_ALPHA})`;
+        const sy=(He-1-((idx-(idx%W))/W))*cell, sx=(idx%W)*cell;
+        ctx.fillRect(sx, sy, h2, h2);        // oben-links
+        ctx.fillRect(sx+h2, sy+h2, h2, h2);  // unten-rechts
+      }
+    }
+  }
+
+  // Marker mit HAs Original-Icons (aus icons.js, Dreame-Set hell)
+  const ICON = window.HA_ICONS || {};
+  // Icon-Groessen in Karten-Zellen — HA berechnet sie aus der Kartengroesse (map.py
+  // 9664-9684), damit der Roboter auf jeder Karte gleich gross WIRKT:
+  //   robot = 3,7 % der Kartenseite (bei Drehung 0/180 Breite, sonst Hoehe), Grenzen 7..14
+  //   charger = robot * 1,2 (map.py 10246 -- bei uns war es bisher umgekehrt: 9 zu 7)
+  // HAs Zusatz `if scale <= 2: robot *= 0.7` greift hier nicht: unsere Zellgroesse ist
+  // cell = 4 px, also > 2.
+  // ICON_SCALE = 1: exakt HAs Groesse (Nutzerwunsch 2026-07-17; der fruehere 0.64-Faktor
+  // "halb so gross" ist damit zurueckgenommen). Zum Nachjustieren NUR diesen Wert aendern,
+  // das Groessenverhaeltnis zur Karte und zur Station bleibt dann HA-konform erhalten.
+  const ICON_SCALE = 1;
+  let ICON_SIZE = { robot: 9 * ICON_SCALE, charger: 9 * 1.2 * ICON_SCALE }; // bis zur 1. Karte
+  function computeIconSizes(){
+    // HA: rotation 0/180 -> Breite, sonst Hoehe. Unser Widget dreht die Karte nicht (eigene
+    // Luecke, in PORT_STATUS vermerkt); die Wahl der Basisseite folgt trotzdem HA.
+    const rot = (META && META.mra) || 0;
+    const base = (rot === 0 || rot === 180) ? W : He;
+    const robot = Math.max(7, Math.min(14, base * 0.037));
+    ICON_SIZE = { robot: robot * ICON_SCALE, charger: robot * 1.2 * ICON_SCALE };
+  }
+  // Icon = Gruppe (Position) + Icon-Inhalt darin (Drehung ums eigene Zentrum).
+  // Getrennt, damit die Fahrt sauber gleitet und die Rotation nicht den Drehpunkt verschiebt.
+  //
+  // Liegt fuer das Icon ein VEKTOR vor (icons_vec.js), wird der als <path> direkt in die
+  // Karte gezeichnet — nicht als <image>. Grund: ein Bild rastert der Browser einmal in der
+  // angezeigten Groesse (~18 px) und skaliert es beim Zoomen hoch. Genau daher kam die
+  // Unschaerfe. Als Pfad wird es bei jeder Zoomstufe frisch gezeichnet.
+  const VEC = window.HA_ICONS_VEC || {};
+  function iconMarker(wx,wy,href,size,cls,vecKey){
+    const g=document.createElementNS(NS,'g');
+    if(cls) g.setAttribute('class',cls);
+    const vec = vecKey && VEC[vecKey];
+    let node;
+    if (vec){
+      // Zwei Ebenen: aussen die Drehung (die setzt moveIcon), innen die Skalierung.
+      // Beides auf demselben Element wuerde sich gegenseitig ueberschreiben.
+      node=document.createElementNS(NS,'g');
+      const inner=document.createElementNS(NS,'g');
+      const s=size/vec.viewBox; // Pfade liegen im Koordinatensystem des Originals (0..viewBox)
+      inner.setAttribute('transform',`scale(${s}) translate(${-vec.viewBox/2},${-vec.viewBox/2})`);
+      for(const p of vec.paths){
+        const el=document.createElementNS(NS,'path');
+        el.setAttribute('d',p.d); el.setAttribute('fill',p.fill); el.setAttribute('fill-rule','evenodd');
+        inner.appendChild(el);
+      }
+      node.appendChild(inner);
+    } else {
+      node=document.createElementNS(NS,'image');
+      node.setAttribute('href',href);
+      node.setAttributeNS('http://www.w3.org/1999/xlink','href',href); // Fallback ältere Renderer
+      node.setAttribute('x',-size/2); node.setAttribute('y',-size/2);  // zentriert um (0,0)
+      node.setAttribute('width',size); node.setAttribute('height',size);
+    }
+    node.setAttribute('data-icon','1'); // markiert das eigentliche Icon (s. moveIcon)
+    g.appendChild(node); ov.appendChild(g); moveIcon(g,wx,wy,size); return g;
+  }
+  function moveIcon(el,wx,wy,size,angle){
+    const [sx,sy]=wS(wx,wy);
+    // SVG-Attribut statt style.transform: Letzteres schiebt das Icon in eine eigene
+    // GPU-Ebene, die beim Zoomen hochskaliert wird -> unscharf. Das Attribut wird vom
+    // SVG-Renderer bei jeder Aenderung sauber neu gezeichnet.
+    el.setAttribute('transform',`translate(${sx.toFixed(2)},${sy.toFixed(2)})`);
+    // HA dreht das Roboter-Icon nach Blickrichtung (PIL rotate = gegen Uhrzeiger -> SVG negativ)
+    // Gezielt das Icon-Bild drehen, NICHT firstChild: setBadge schiebt den Zustands-Kreis
+    // per insertBefore davor ('behind'), dadurch waere firstChild der Kreis — der Roboter
+    // hat sich deshalb waehrend der Reinigung ueberhaupt nicht mehr ausgerichtet.
+    const img = el.querySelector('[data-icon]'); // <image> ODER <g> (Vektor)
+    if (angle!==undefined && angle!==null && img){
+      // Winkel FORTLAUFEND halten. Sonst: faehrt der Roboter nach links, liegt die Richtung
+      // bei ~180° — und die Rechnung springt dort staendig zwischen +178° und -178°. Real
+      // sind das 4°, das Icon nimmt aber den langen Weg und dreht sich fast einmal komplett.
+      // An echten Spurdaten nachgemessen: 6° echte Drehung -> 354° Icon-Drehung.
+      let a = angle;
+      if (el._ang !== undefined){ let d=a-el._ang; while(d>180)d-=360; while(d<-180)d+=360; a=el._ang+d; }
+      el._ang = a;
+      img.setAttribute('transform',`rotate(${-a})`);
+    }
+  }
+  const robotAngle=()=> (META && META.ha && META.ha.robotAngle!=null) ? META.ha.robotAngle : null;
+
+  // ===== Roboter-Status (Anzeige + Karten-Badges wie HA) =====
+  const VST={state:null,status:null,battery:null,charging:null,cprog:null,dprog:null,carea:null,ctime:null,
+             tstat:null,cpaused:null,wash:null,empty:null,hotw:null,tank:null,mopstat:null,drain:null,
+             dustcol:null};
+  // HA device.robot_status: 1=Reinigung, 2=Laden, 3=Schlafen; +10 Fehler
+  function robotStatusCode(){
+    const st=VST.status;
+    const running=[2,4,5,18,19,20,22,23,24,25].includes(st);
+    const charging=VST.charging===1 || VST.state===6 || VST.state===13 || VST.state===24;
+    const sleeping=st===14;
+    let v=0;
+    if (running) v=1; else if (charging) v=2; else if (sleeping) v=3;
+    if (st===12) v+=10; // Fehler -> Warn-Badge
+    return v;
+  }
+  // HA device.station_status: 2=Waschen, 4=Trocknen (an der Basisstation).
+  // Trocknung NUR ueber state 8/35 — drying-progress bleibt nach Ende stehen (stale).
+  // types.py DreameVacuumSelfWashBaseStatus / DreameVacuumAutoEmptyStatus
+  const WASH = { IDLE:0, WASHING:1, DRYING:2, RETURNING:3, PAUSED:4, CLEAN_ADD_WATER:5,
+                 ADDING_WATER:6, RETURNING_FOR_DRY_MOP:7 };
+  const EMPTY_ACTIVE = 1;
+  /**
+   * 1:1-Port von HA device.py station_status (8624-8641):
+   *   1 = entleeren, 2 = waschen, 3 = waschen pausiert, 4 = trocknen,
+   *   5/6 = Staubbeutel-Trocknung (6 = pausiert), +10 = Heisswaesche
+   * Vorher wurde das aus `state` geraten — das lag bei Zwischenzustaenden daneben und
+   * kannte weder Entleeren noch Heisswaesche.
+   *
+   * ➖ Abweichung: HAs hot_washing (9701-9707) hat zwei Zweige. Wir bilden nur den ersten
+   * ab (hot_water_status == 1); der zweite laeuft ueber eine AutoSwitch-Eigenschaft, die
+   * der Adapter nicht bereitstellt.
+   * ➖ Abweichung: HAs dust_bag_drying_paused hat bei uns keine Entsprechung — wir melden
+   * die Staubbeutel-Trocknung deshalb immer als laufend (5), nie als pausiert (6).
+   */
+  function stationStatusCode(){
+    if (VST.empty === EMPTY_ACTIVE) return 1;
+    const w = VST.wash;
+    let value = 0;
+    if (w === WASH.WASHING || w === WASH.CLEAN_ADD_WATER) value = 2;
+    if (w === WASH.PAUSED) value = 3;
+    if (w === WASH.DRYING) value = 4;
+    else if (VST.state === 35) value = 5;              // Staubbeutel-Trocknung
+    if (value && VST.hotw === 1) value += 10;
+    return value;
+  }
+  // ===== Station: Zustand + manuelle Aktionen =====
+  // Faehigkeit wie HA (types.py 3110/3111): vorhanden, wenn das Geraet die Eigenschaft meldet.
+  const kannWaschen  = () => VST.wash != null;
+  // HA types.py 3111: auto_empty_base haengt an DUST_COLLECTION, nicht am Entleer-Status.
+  const kannEntleeren= () => VST.dustcol != null;
+  /** HA device.py 9000-9010, vereinfacht: laedt oder haengt an der Station. */
+  const angedockt = () => VST.charging===1 || VST.charging===3
+                       || VST.wash===WASH.WASHING || VST.wash===WASH.DRYING || VST.wash===WASH.PAUSED;
+  /** HA 8737-8744: Wassertank ODER Wischpad eingesetzt. */
+  const moppDrin = () => VST.tank!==0 || VST.mopstat===1;
+  /**
+   * HA device.py 9410-9425. ➖ Nicht abgebildet: returning_to_wash(_paused) und
+   * returning_paused — dafuer fehlen uns die Zustaende; "returning" faengt der
+   * Status BACK_HOME ab.
+   */
+  const waschenGeht = () => kannWaschen() && moppDrin()
+    && !(VST.wash===WASH.WASHING || VST.wash===WASH.PAUSED || VST.wash===WASH.RETURNING
+         || VST.status===ST.BACK_HOME || VST.cpaused);
+  /** HA device.py 9428-9439. ➖ Nicht abgebildet: self_repairing (kein State dafuer). */
+  const trocknenGeht = () => kannWaschen() && moppDrin() && angedockt()
+    && VST.wash!==WASH.WASHING && VST.wash!==WASH.PAUSED
+    && !geraetGestartet() && !VST.drain;
+  const trocknetGerade = () => VST.wash===WASH.DRYING;
+  /**
+   * HA device.py 8656-8672. Wichtigster Teil: waehrend eines Waschgangs geht kein
+   * Entleeren (8669) — genau das lief vorher ungebremst ins Leere.
+   * ➖ Nicht abgebildet: HAs zweiter Zweig (auto_empty_mode/gen5 + started …), der das
+   * Entleeren auch waehrend der Fahrt erlaubt — dafuer fehlen uns die Faehigkeiten.
+   * ➖ Nicht abgebildet: self_repairing (kein State dafuer).
+   */
+  const entleerenGeht = () => kannEntleeren() && VST.dustcol===1
+    && VST.state!==28                                   // RETURNING_AUTO_EMPTY
+    && (VST.wash!==WASH.WASHING || VST.wash===WASH.PAUSED)
+    && !VST.drain;
+
+  /**
+   * Menue an der Station. Alle Stationsbefehle laufen bei HA ueber DIESELBE Aktion 4-4,
+   * unterschieden durch ein Code-Paar in piid 10 (device.py 5133-5146, start_self_wash_base):
+   *   "2,1" waschen · "3,1"/"3,0" trocknen an/aus
+   * Waschen und Entleeren haben im Adapter eigene Objekte, Trocknen nicht — das geht
+   * deshalb ueber customCommand.
+   */
+  function openStationMenu(){
+    const opts = [];
+    if (kannEntleeren()){
+      const laeuft = VST.empty===EMPTY_ACTIVE, geht = entleerenGeht();
+      opts.push({ id:'empty', name:'Staub entleeren', aus: laeuft || !geht,
+        desc: laeuft ? 'Läuft gerade'
+            : geht   ? 'Behälter in die Station absaugen'
+            : (VST.wash===WASH.WASHING ? 'Erst nach dem Mopp-Waschen'
+              : !angedockt() ? 'Nur an der Station möglich' : 'Gerade nicht möglich') });
+    }
+    if (kannWaschen()){
+      const waschtGerade = VST.wash===WASH.WASHING, pausiert = VST.wash===WASH.PAUSED;
+      // Ein angehaltener Waschgang wird FORTGESETZT, nicht neu gestartet — HA macht das
+      // ueber ein eigenes Code-Paar (device.py 5156-5166). Ohne diesen Zweig war der
+      // Eintrag gesperrt und der Waschgang liess sich gar nicht mehr weiterfuehren.
+      opts.push({ id: pausiert ? 'resume' : waschtGerade ? 'pausewash' : 'wash',
+        name: pausiert ? 'Waschen fortsetzen' : waschtGerade ? 'Waschen anhalten' : 'Mopp waschen',
+        aus: (pausiert || waschtGerade) ? false : !waschenGeht(),
+        desc: pausiert     ? 'Angehaltenen Waschgang weiterlaufen lassen'
+            : waschtGerade ? 'Läuft gerade — anhalten, ohne den Auftrag zu beenden'
+            : waschenGeht() ? 'Wischpad in der Station reinigen'
+            : !moppDrin()   ? 'Kein Wischpad eingesetzt' : 'Gerade nicht möglich' });
+      const trocknet = trocknetGerade();
+      opts.push({ id:'dry', name: trocknet ? 'Trocknen beenden' : 'Mopp trocknen',
+        aus: !trocknet && !trocknenGeht(),
+        desc: trocknet ? 'Laufende Trocknung abbrechen'
+            : trocknenGeht() ? 'Wischpad trocknen'
+            : waschtGerade   ? 'Erst nach dem Mopp-Waschen'
+            : !angedockt()   ? 'Nur an der Station möglich'
+            : geraetGestartet() ? 'Erst nach der Reinigung' : 'Gerade nicht möglich' });
+    }
+    if (!opts.length){ return; }
+    openPicker('Station', opts, null, (id)=>{
+      if (id==='empty') cmd('remote.start-auto-empty', true);
+      else if (id==='wash') cmd('remote.start-washing', true);
+      else if (id==='resume') cmd('remote.resume-washing', JSON.stringify([{piid:10, value:'1,1'}]));
+      else if (id==='pausewash') cmd('remote.pause-washing', JSON.stringify([{piid:10, value:'1,0'}]));
+      else if (id==='dry'){
+        // Eigene Objekte im Adapter (4-4 mit Code-Paar in piid 10). Der Wert MUSS als
+        // JSON-Text gehen: bei einem Boolean sendet der Adapter "in: []" — das ist dann
+        // die nackte Aktion 4-4 und startet einen WASCHGANG statt zu trocknen.
+        if (trocknetGerade()) cmd('remote.stop-drying',  JSON.stringify([{piid:10, value:'3,0'}]));
+        else                  cmd('remote.start-drying', JSON.stringify([{piid:10, value:'3,1'}]));
+      }
+    });
+  }
+  function updateStatusPanel(){
+    const t=document.getElementById('stateText'), s=document.getElementById('stateSub');
+    if (!t) return;
+    t.textContent = (VST.state!=null && STATE_DE[VST.state]) ? STATE_DE[VST.state] : (VST.state!=null ? 'Status '+VST.state : '–');
+    const parts=[];
+    if (VST.battery!=null) parts.push('🔋 '+VST.battery+' %');
+    const cleaningLike=[1,7,12,21,25,27,37,38,101,102].includes(VST.state);
+    if (cleaningLike){
+      if (VST.cprog>0) parts.push(VST.cprog+' %');
+      if (VST.carea>0) parts.push(VST.carea+' m²');
+      if (VST.ctime>0) parts.push(VST.ctime+' min');
+    }
+    if ((VST.state===8 || VST.state===35) && VST.dprog>0) parts.push('Trocknung '+VST.dprog+' %');
+    s.textContent = parts.length ? parts.join(' · ') : '–';
+  }
+  // Badge-Bild in einer Icon-Gruppe setzen/entfernen (pos: 'behind'=Kreis hinter dem Icon,
+  // 'corner'=klein daneben, 'above'=ueber dem Icon — wie HAs Platzierungen)
+  function setBadge(group, key, href, size, pos){
+    if (!group) return;
+    const old=group.querySelector('image[data-badge]');
+    if (old && old.getAttribute('data-badge')===key) return;
+    if (old) old.remove();
+    if (!href || !key) return;
+    const im=document.createElementNS(NS,'image');
+    im.setAttribute('data-badge',key);
+    im.setAttribute('href',href); im.setAttributeNS('http://www.w3.org/1999/xlink','href',href);
+    if (pos==='corner'){ im.setAttribute('x',size*0.35); im.setAttribute('y',-size*0.75); im.setAttribute('width',size*0.45); im.setAttribute('height',size*0.45); }
+    else if (pos==='above'){ im.setAttribute('x',-size*0.45); im.setAttribute('y',-size*1.25); im.setAttribute('width',size*0.9); im.setAttribute('height',size*0.9); }
+    else { im.setAttribute('x',-size*0.65); im.setAttribute('y',-size*0.65); im.setAttribute('width',size*1.3); im.setAttribute('height',size*1.3); }
+    if (pos==='behind') group.insertBefore(im, group.firstChild); // hinter dem Roboter (wie HA)
+    else group.appendChild(im);
+  }
+  function updateBadges(){
+    let rs=robotStatusCode();
+    const warn=rs>=10; if (warn) rs-=10;
+    if (warn)        setBadge(robotMk,'warn',ICON.ST_WARNING,ICON_SIZE.robot,'behind');
+    else if (rs===1) setBadge(robotMk,'clean',ICON.ST_CLEANING,ICON_SIZE.robot,'behind');
+    else if (rs===2) setBadge(robotMk,'charge',ICON.ST_CHARGING,ICON_SIZE.robot,'behind');
+    else if (rs===3) setBadge(robotMk,'sleep',ICON.ST_SLEEPING,ICON_SIZE.robot,'corner');
+    else             setBadge(robotMk,null);
+    // Zuordnung 1:1 wie HA map.py 10908-10996: erst Heisswaesche abspalten (>=10),
+    // dann 1 = entleeren, 2-3 = waschen, 5-6 = Staubbeutel, sonst (4) = trocknen.
+    let ss=stationStatusCode();
+    const heiss = ss>=10; if (heiss) ss-=10;
+    if (ss===0)      setBadge(chargerMk,null);
+    else if (ss===1) setBadge(chargerMk,'empty',ICON.ST_EMPTYING,ICON_SIZE.charger,'above');
+    else if (ss<4)   setBadge(chargerMk, heiss?'hotwash':'wash',
+                              heiss?ICON.ST_HOT_WASHING:ICON.ST_WASHING,ICON_SIZE.charger,'above');
+    else if (ss===5||ss===6) setBadge(chargerMk,'bagdry',ICON.ST_DUST_BAG_DRYING,ICON_SIZE.charger,'above');
+    else             setBadge(chargerMk, heiss?'hotdry':'dry',
+                              heiss?ICON.ST_HOT_DRYING:ICON.ST_DRYING,ICON_SIZE.charger,'above');
+  }
+  function setVst(key,val){ VST[key]=(val==null||val==='')?null:Number(val);
+    updateStatusPanel(); updateBadges(); updateStartPause(); }
+
+  // ===== Start / Pause =====
+  // 1:1 aus HA: device.py started (9038-9058) bzw. deviceStatusFlags() in lib/haMap.js des
+  // Adapters — dieselbe Logik, damit Widget und Adapter nicht auseinanderlaufen.
+  const TS = { UNKNOWN:-1, COMPLETED:0, DOCKING_PAUSED:11 };
+  const ST = { CLEANING:2, BACK_HOME:3, PARTIAL_CLEANING:4, SEGMENT_CLEANING:18, ZONE_CLEANING:19,
+               SPOT_CLEANING:20, FAST_MAPPING:21, CRUISING_PATH:22, CRUISING_POINT:23, SHORTCUT:25 };
+  const STATE_PAUSED = 3;   // types.py DreameVacuumState.PAUSED
+  // Optimistische Annahme nach einem Tipp (HA macht das ueber _update_property): ohne sie
+  // zeigt der Knopf ein bis zwei Sekunden das alte Symbol, und ein zweiter Tipp in dieser
+  // Zeit schickt den falschen Befehl.
+  //
+  // Sie darf NICHT von der naechsten beliebigen Geraetemeldung geloest werden: nach einem
+  // Tipp kommen erst noch Meldungen mit dem ALTEN Zustand, das Symbol sprang dadurch
+  // zurueck und kurz darauf wieder vor (sichtbares Flackern). Sie faellt erst, wenn der
+  // gemeldete Zustand zur Annahme passt — oder nach ANNAHME_MAX, falls der Befehl unterging.
+  let annahme = null, annahmeAb = 0;
+  const ANNAHME_MAX = 8000;
+  function setzeAnnahme(wert){ annahme = wert; annahmeAb = Date.now(); updateStartPause(); }
+
+  /** HA device.py 9038-9058 — Geraet hat eine aktive Aufgabe. */
+  function geraetGestartet(){
+    // HA-Eigenheit: ein unbekannter/fehlender task_status ist weder COMPLETED noch
+    // DOCKING_PAUSED und gilt damit als "gestartet". Solange wir noch gar nichts vom
+    // Geraet wissen (null), waere das falsch — dann lieber "nicht gestartet".
+    if (VST.tstat==null && VST.status==null) return false;
+    const t = VST.tstat==null ? TS.UNKNOWN : VST.tstat;
+    const s = VST.status;
+    return Boolean(
+      (t !== TS.COMPLETED && t !== TS.DOCKING_PAUSED)
+      || !!VST.cpaused
+      || s === ST.CLEANING || s === ST.SEGMENT_CLEANING || s === ST.ZONE_CLEANING
+      || s === ST.SPOT_CLEANING || s === ST.PARTIAL_CLEANING || s === ST.FAST_MAPPING
+      || s === ST.CRUISING_PATH || s === ST.CRUISING_POINT || s === ST.SHORTCUT
+    );
+  }
+
+  /**
+   * HA device.py start_pause (4495-4501): nicht gestartet ODER pausiert ODER auf dem
+   * Rueckweg -> start(), sonst pause(). "Auf dem Rueckweg" zaehlt bewusst als startbar.
+   * @returns true, wenn ein Tipp jetzt STARTEN (statt pausieren) wuerde
+   */
+  function wuerdeStarten(){
+    const echt = !geraetGestartet() || VST.state===STATE_PAUSED || VST.status===ST.BACK_HOME;
+    if (annahme != null){
+      // Geraet hat die Annahme eingeholt oder zu lange nicht geantwortet -> fallen lassen
+      if (echt === annahme || Date.now() - annahmeAb > ANNAHME_MAX) annahme = null;
+      else return annahme;
+    }
+    return echt;
+  }
+  let letztesSymbol = null;
+  function updateStartPause(){
+    const b = document.getElementById('c-start'); if (!b) return;
+    const start = wuerdeStarten();
+    const sym = start ? 'start' : 'pause';
+    // Nur bei echtem Wechsel neu zeichnen — sonst ersetzt jede Statusmeldung das SVG,
+    // was unruhig aussieht und einen Tipp verschlucken kann.
+    if (sym !== letztesSymbol){
+      b.innerHTML = uiIcon(sym, 20);
+      letztesSymbol = sym;
+    }
+    b.title = start ? (geraetGestartet() ? 'Fortsetzen' : 'Start') : 'Pause';
+    b.setAttribute('aria-label', b.title);
+    // Nur ohne laufenden Auftrag braucht es eine Raumauswahl; Fortsetzen geht immer.
+    b.disabled = start && !geraetGestartet() && selectedRooms.size===0;
+  }
+
+  // ===== HA-Overlays: Sperrzonen, virtuelle Waende, Moebel, Vorhaenge =====
+  // Farben aus HAs "Dreame Light"-Schema (types.py)
+  const NOGO_FILL='rgba(177,0,0,0.196)', NOGO_LINE='rgba(199,0,0,0.784)';
+  const NOMOP_FILL='rgba(170,47,255,0.196)', NOMOP_LINE='rgba(153,0,210,0.784)';
+  const VWALL_LINE='rgba(199,0,0,0.784)', CURTAIN_COL='rgb(247,123,46)';
+  function svgEl(tag,attrs){ const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); ov.appendChild(e); return e; }
+  // Raum an einer Welt-Position (mm) — fuer "Inhalte mit Raum ausblenden"
+  function roomAtWorld(wx,wy){
+    const cx=Math.floor((wx-H.origin.x)/GS), cy=Math.floor((wy-H.origin.y)/GS);
+    if (cx<0||cy<0||cx>=W||cy>=He) return 0;
+    const t=raw[mapStart+cy*W+cx];
+    return isRoom(t)?t:0;
+  }
+  const hiddenAtWorld=(wx,wy)=>{ const r=roomAtWorld(wx,wy); return r!==0 && hidden.has(r); };
+  function drawZones(){
+    const ha=META.ha||{};
+    // Rahmen INNEN zeichnen, wie HA. SVG legt den Strich mittig auf die Kante — damit ragte
+    // die Haelfte (0.25 Zellen = 12.5 mm) nach aussen ueber die Zone hinaus, die Zone wirkte
+    // rundum etwas zu gross bzw. nach unten versetzt. HA nutzt Pillow, und das zeichnet den
+    // Rahmen ausdruecklich innen ("To avoid expanding the polygon outwards, use the fill as
+    // a mask" — Pillow, ImageDraw.polygon). Deshalb das Rechteck um die halbe Strichbreite
+    // einruecken, dann liegt die Aussenkante des Strichs genau auf der Zonengrenze.
+    const SW=0.5; // Strichbreite in Zellen; entspricht HAs border_width 2 bei scale 4
+    const rect=(r,fill,stroke)=>{ if(!Array.isArray(r)||r.length<4) return;
+      if (hiddenAtWorld((r[0]+r[2])/2,(r[1]+r[3])/2)) return; // Zone liegt in ausgeblendetem Raum
+      const [x0,y0]=wS(Math.min(r[0],r[2]),Math.max(r[1],r[3]));
+      const [x1,y1]=wS(Math.max(r[0],r[2]),Math.min(r[1],r[3]));
+      svgEl('rect',{x:x0+SW/2, y:y0+SW/2,
+                    width:Math.max(0,(x1-x0)-SW), height:Math.max(0,(y1-y0)-SW),
+                    fill,stroke,'stroke-width':SW}); };
+    (ha.noGo||[]).forEach(r=>rect(r,NOGO_FILL,NOGO_LINE));
+    (ha.noMop||[]).forEach(r=>rect(r,NOMOP_FILL,NOMOP_LINE));
+    (ha.virtualWalls||[]).forEach(l=>{ if(!Array.isArray(l)||l.length<4) return;
+      if (hiddenAtWorld((l[0]+l[2])/2,(l[1]+l[3])/2)) return;
+      const [x0,y0]=wS(l[0],l[1]), [x1,y1]=wS(l[2],l[3]);
+      svgEl('line',{x1:x0,y1:y0,x2:x1,y2:y1,stroke:VWALL_LINE,'stroke-width':0.6,'stroke-linecap':'round'}); });
+  }
+
+  /**
+   * DIAGNOSE ("Raster"-Knopf): Prueft, ob das Overlay (alles ueber wS gezeichnet — Zonen,
+   * Teppiche, Roboter) auf denselben Pixeln sitzt wie die Karte im Canvas.
+   *
+   * Gezeichnet wird:
+   *   - gruenes Gitter auf den ZELLGRENZEN (SVG-Einheiten, also ganze Zahlen). Sitzt das
+   *     Overlay richtig, laufen diese Linien exakt auf den Kanten der Kartenpixel.
+   *   - magenta Fadenkreuze an bekannten WELTKOORDINATEN, ueber wS umgerechnet (der Weg,
+   *     den Zonen, Roboter und Spur nehmen).
+   *   - rote Kaestchen um die ZELLE, in die derselbe Punkt faellt — berechnet ueber den
+   *     Canvas-Weg (Welt -> Zelle -> Kaestchen an der Canvas-Position dieser Zelle).
+   *
+   * Auswertung: Liegt das Fadenkreuz INNERHALB seines roten Kaestchens, stimmen Overlay und
+   * Canvas ueberein — dann liegt der Versatz nicht bei uns, sondern im Vergleich zu HA.
+   * Liegt es daneben, ist genau das der Fehler, und man sieht direkt um wieviel.
+   * Die Beschriftung nennt die berechnete Zelle, damit man sie mit HA vergleichen kann.
+   */
+  function drawGrid(){
+    if (!showGrid || !H) return;
+    const L=H.origin.x, T=H.origin.y;
+    for (let x=0;x<=W;x+=5) svgEl('line',{x1:x,y1:0,x2:x,y2:He,stroke:'#00b050','stroke-width':0.06,'pointer-events':'none'});
+    for (let y=0;y<=He;y+=5) svgEl('line',{x1:0,y1:y,x2:W,y2:y,stroke:'#00b050','stroke-width':0.06,'pointer-events':'none'});
+    const marke=(wx,wy,txt)=>{
+      const [sx,sy]=wS(wx,wy);                       // Weg 1: wie Zonen/Roboter (Overlay)
+      svgEl('line',{x1:sx-2,y1:sy,x2:sx+2,y2:sy,stroke:'#ff00ff','stroke-width':0.12});
+      svgEl('line',{x1:sx,y1:sy-2,x2:sx,y2:sy+2,stroke:'#ff00ff','stroke-width':0.12});
+      // Weg 2: wie Teppiche/Canvas — Welt in Zelle, dann Kaestchen an DEREN Canvas-Position
+      const cxC=Math.floor((wx-L)/GS), cyC=Math.floor((wy-T)/GS);
+      svgEl('rect',{x:cxC, y:He-1-cyC, width:1, height:1, fill:'none', stroke:'#ff0000','stroke-width':0.1});
+      if(txt) svgEl('text',{x:sx+2.5,y:sy-1,'font-size':2,fill:'#ff00ff'}).textContent=txt+' [Zelle '+cxC+','+cyC+']';
+    };
+    if (chargerPos) marke(chargerPos[0],chargerPos[1],'Station');
+    if (robotPos)   marke(robotPos[0],robotPos[1],'Roboter');
+    const ha=META.ha||{};
+    (ha.noGo||[]).forEach((r,i)=>{ marke(Math.min(r[0],r[2]),Math.max(r[1],r[3]),'Zone'+i+' oben-links');
+                                   marke(Math.max(r[0],r[2]),Math.min(r[1],r[3]),'unten-rechts'); });
+  }
+  function drawFurniture(){
+    const ha=META.ha||{};
+    (ha.furnitures||[]).forEach(f=>{
+      // Moebelbilder liegen als einzelne Dateien (furniture/<typ>.png), NICHT mehr als
+      // base64 im Skript: so laedt der Browser nur die Typen, die wirklich vorkommen,
+      // statt bei jedem Aufruf 1,5 MB fuer alle 15. Fehlt eine Datei, bleibt die Stelle leer.
+      const href = f.type!=null ? `furniture/${f.type}.png` : null;
+      if(!href||!f.w||!f.h) return;
+      // Moebel ausblenden, wenn sein Raum ausgeblendet ist (Raum-Nr. aus Daten wie HA,
+      // sonst Raum unter dem Moebel-Mittelpunkt)
+      if (f.seg ? hidden.has(f.seg) : hiddenAtWorld(f.x,f.y)) return;
+      const [cx,cy]=wS(f.x,f.y); const w=f.w/GS, h=f.h/GS;
+      const im=svgEl('image',{x:cx-w/2,y:cy-h/2,width:w,height:h,opacity:235/255,
+        transform:`rotate(${f.angle||0} ${cx} ${cy})`,preserveAspectRatio:'none'});
+      im.setAttribute('href',href); im.setAttributeNS('http://www.w3.org/1999/xlink','href',href);
+    });
+  }
+  function drawCurtains(){
+    const ha=META.ha||{};
+    (ha.curtains||[]).forEach(l=>{ if(!Array.isArray(l)||l.length<4) return;
+      if (hiddenAtWorld((l[0]+l[2])/2,(l[1]+l[3])/2)) return; // Vorhang in ausgeblendetem Raum
+      // Sinus-Welle entlang der Vorhang-Linie (wie die Original-App).
+      // Amplitude ±1,25 Zellen = HAs Massstab (±5 Bildpixel bei scale 4).
+      const [x0,y0]=wS(l[0],l[1]), [x1,y1]=wS(l[2],l[3]);
+      const dx=x1-x0, dy=y1-y0, len=Math.hypot(dx,dy)||1;
+      const ux=dx/len, uy=dy/len;   // Richtung entlang der Linie
+      const nx=-uy, ny=ux;          // Normale (quer zur Linie)
+      const AMP=0.625;              // Zellen (halbierte HA-Amplitude, Nutzer-Wunsch)
+      const period=300/GS;          // Wellenlaenge 300 mm (wie HAs 150-mm-Zickzack-Halbschritt)
+      const step=0.25;              // Sample-Abstand (Zellen)
+      const pts=[];
+      for(let s=0;s<=len;s+=step){
+        const a=Math.sin((s/period)*2*Math.PI)*AMP;
+        pts.push((x0+ux*s+nx*a).toFixed(2),(y0+uy*s+ny*a).toFixed(2));
+      }
+      svgEl('polyline',{points:pts.join(' '),fill:'none',stroke:CURTAIN_COL,'stroke-width':0.35,'stroke-linejoin':'round','stroke-linecap':'round'});
+    });
+  }
+
+  function buildOverlay(){
+    ov.innerHTML='';
+    for(const k in labelEls) delete labelEls[k];
+    for(const k in markEls)  delete markEls[k];
+    ov.setAttribute('viewBox', `0 0 ${W} ${He}`); ov.setAttribute('preserveAspectRatio','none');
+    drawZones();       // Sperrzonen / virtuelle Waende (wie HA)
+    drawFurniture();   // Moebel (HA-Bilder)
+    drawCurtains();    // Vorhaenge (Zickzack)
+    // gefahrene Spur (unter Labels/Marker): Klick-Segmente + sichtbare Linie + rote Auswahl
+    trailHit=document.createElementNS(NS,'g'); ov.appendChild(trailHit);
+    trailEl=document.createElementNS(NS,'path'); trailEl.setAttribute('class','trail'); ov.appendChild(trailEl);
+    trailSel=document.createElementNS(NS,'line'); trailSel.setAttribute('id','trailSel');
+    trailSel.style.display='none'; ov.appendChild(trailSel);
+    renderTrail();
+    // Raummarke: eine Gruppe je Raum, darin Name und (bei Auswahl) das Badge. Die Gruppe
+    // sitzt am Raumschwerpunkt und wird gegen den Zoom skaliert — innen gilt Pixelmass.
+    for (const id of Object.keys(rooms)){
+      const r=rooms[id], [sx,sy]=toScreen(r.sumX/r.count, r.sumY/r.count);
+      const g=document.createElementNS(NS,'g'); g.setAttribute('class','rmark');
+      g.dataset.x=sx; g.dataset.y=sy;
+      const t=document.createElementNS(NS,'text'); t.setAttribute('class','rlabel');
+      t.setAttribute('x',0); t.setAttribute('y',0);
+      const s=labelStyle(+id); t.setAttribute('fill', s.fill); t.style.fontWeight=s.weight; t.style.opacity=s.opacity;
+      t.textContent=roomName(id,META.seg_inf);
+      g.appendChild(t);
+      if(hidden.has(+id)) g.style.display='none';
+      ov.appendChild(g); labelEls[id]=t; markEls[id]=g;
+    }
+    skaliereMarken(true);
+    updateRoomBadges();
+    chargerMk = chargerPos ? iconMarker(chargerPos[0],chargerPos[1],ICON.CHARGER,ICON_SIZE.charger) : null;
+    robotMk   = robotPos   ? iconMarker(robotPos[0],robotPos[1],ICON.ROBOT,ICON_SIZE.robot,'robot-mk','ROBOT') : null;
+    // Die Marker werden bei jedem Kartenpaket neu erzeugt — den Roboter deshalb dorthin
+    // setzen, wo die laufende Bewegung ihn gerade hat, sonst springt er kurz vor.
+    // Bedingung ist "faehrt gerade" (animReq), nicht "gibt es eine Spur": die bleibt nach
+    // der Reinigung liegen, und der Marker klebte dann an ihrem Ende fest.
+    if (robotMk && animReq) syncRobotToHead();
+    else if (robotMk && smooth && dispPos) placeRobot(dispPos.x, dispPos.y, dispAngle); // laufende Bewegung nicht stoeren
+    else if (robotMk && robotPos) placeRobot(robotPos[0], robotPos[1], robotAngle());
+    updateBadges(); // Marker wurden neu erzeugt -> Zustands-Badges wiederherstellen
+    baueStationHit(); // NACH dem Roboter: steht er in der Station, liegt sein Icon sonst drueber
+    drawGrid();     // Diagnose zuletzt -> liegt oben drauf
+  }
+
+  /**
+   * Unsichtbare Trefferflaeche ueber der Ladestation, die das Stationsmenue oeffnet.
+   * Bewusst als LETZTES eingehaengt: der Roboter wird nach der Station gezeichnet und
+   * deckt sie beim Andocken vollstaendig ab — ein Klick traefe sonst ihn.
+   * Wird wie die Raummarken gegen den Zoom skaliert, damit die Flaeche immer gross genug
+   * fuer einen Finger bleibt.
+   */
+  let stationHit = null;
+  function baueStationHit(){
+    stationHit = null;
+    if (!chargerPos) return;
+    const g = document.createElementNS(NS,'g');
+    g.setAttribute('class','stationhit');
+    const c = document.createElementNS(NS,'circle');
+    c.setAttribute('cx',0); c.setAttribute('cy',0); c.setAttribute('r',24);  // 48 px Durchmesser
+    c.setAttribute('fill','transparent');
+    g.appendChild(c);
+    const [sx,sy] = wS(chargerPos[0], chargerPos[1]);
+    g.dataset.x = sx; g.dataset.y = sy;
+    ov.appendChild(g);
+    stationHit = g;
+    skaliereStationHit();
+  }
+  function skaliereStationHit(){
+    if (!stationHit) return;
+    const s = 1 / (cell * scale);
+    stationHit.setAttribute('transform',
+      `translate(${stationHit.dataset.x} ${stationHit.dataset.y}) scale(${s})`);
+  }
+
+  function buildRoomList(){
+    const roomList=document.getElementById('roomList'); roomList.innerHTML='';
+    for(const k in rowEls) delete rowEls[k];
+    Object.keys(rooms).sort((a,b)=>a-b).forEach(id=>{
+      const row=document.createElement('div'); row.className='rrow'+(hidden.has(+id)?' off':'');
+      const sw=document.createElement('span'); sw.className='sw'; sw.style.background=rgbCss(roomCol(id).label);
+      const nm=document.createElement('span'); nm.textContent=roomName(id,META.seg_inf);
+      row.append(sw,nm); row.onclick=()=>toggleRoom(+id);
+      roomList.appendChild(row); rowEls[id]=row;
+    });
+  }
+
+  function toggleRoom(seg){
+    if (hidden.has(seg)) hidden.delete(seg); else hidden.add(seg);
+    drawFills();
+    buildOverlay(); // Overlays (Moebel/Vorhaenge/Zonen/Labels) mit neuem hidden-Zustand neu aufbauen
+    if (rowEls[seg]) rowEls[seg].classList.toggle('off', hidden.has(seg));
+    fitVisible();
+  }
+
+  // ---- Zoom / Pan ----
+  // skaliereMarken haelt Raumnamen und Badges in konstanter Groesse; es prueft selbst,
+  // ob sich der Zoom ueberhaupt geaendert hat (beim Verschieben aendert er sich nicht).
+  const applyT=()=>{ wrap.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`; skaliereMarken(); };
+  function visibleBox(){
+    let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,any=false;
+    for(const id of Object.keys(rooms)){
+      if(hidden.has(+id)) continue; any=true; const r=rooms[id];
+      x0=Math.min(x0,r.minX*cell); x1=Math.max(x1,(r.maxX+1)*cell);
+      y0=Math.min(y0,(He-1-r.maxY)*cell); y1=Math.max(y1,(He-1-r.minY+1)*cell);
+    }
+    return any ? {x0,y0,x1,y1} : {x0:0,y0:0,x1:MAPW,y1:MAPH};
+  }
+  function clamp(){
+    const sw=stage.clientWidth, sh=stage.clientHeight;
+    const bw=(box.x1-box.x0)*scale, bh=(box.y1-box.y0)*scale;
+    tx = bw<=sw ? (sw-bw)/2 - box.x0*scale : Math.min(-box.x0*scale, Math.max(sw-box.x1*scale, tx));
+    ty = bh<=sh ? (sh-bh)/2 - box.y0*scale : Math.min(-box.y0*scale, Math.max(sh-box.y1*scale, ty));
+  }
+  function fitVisible(){
+    box=visibleBox(); const sw=stage.clientWidth, sh=stage.clientHeight;
+    minScale=Math.min(sw/(box.x1-box.x0), sh/(box.y1-box.y0))*0.94;
+    scale=minScale; clamp(); applyT();
+  }
+  function zoomAt(cx,cy,f){ const r=stage.getBoundingClientRect(); const px=cx-r.left, py=cy-r.top;
+    const ns=Math.max(minScale, Math.min(minScale*12, scale*f));
+    tx=px-(px-tx)*(ns/scale); ty=py-(py-ty)*(ns/scale); scale=ns; clamp(); applyT(); }
+
+  let zoomBound=false;
+  function setupZoom(){
+    if(zoomBound) return; zoomBound=true;
+    // Einstellungs-Popover (Zahnrad): Ansicht-Toggles + Raumliste ein/ausblenden
+    const gearBtn=document.getElementById('gearBtn'), gearPop=document.getElementById('gearPop');
+    const setGear=(open)=>{ gearPop.classList.toggle('open',open); gearBtn.classList.toggle('on',open); };
+    gearBtn.addEventListener('click', e=>{ e.stopPropagation(); setGear(!gearPop.classList.contains('open')); });
+    gearPop.addEventListener('click', e=>e.stopPropagation());        // Klick im Panel schliesst nicht
+    document.addEventListener('click', ()=>setGear(false));           // Klick daneben schliesst
+    document.addEventListener('keydown', e=>{ if(e.key==='Escape') setGear(false); });
+    stage.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(e.clientX,e.clientY, e.deltaY<0?1.15:1/1.15); }, {passive:false});
+    let drag=false, lx=0, ly=0, sx0=0, sy0=0, downT=null;
+    stage.addEventListener('pointerdown', e=>{ drag=true; lx=e.clientX; ly=e.clientY; sx0=e.clientX; sy0=e.clientY; downT=e.target; wrap.classList.add('drag'); stage.setPointerCapture(e.pointerId); });
+    stage.addEventListener('pointermove', e=>{ if(!drag)return; tx+=e.clientX-lx; ty+=e.clientY-ly; lx=e.clientX; ly=e.clientY; clamp(); applyT(); });
+    stage.addEventListener('pointerup', e=>{ drag=false; wrap.classList.remove('drag');
+      const moved=Math.hypot(e.clientX-sx0, e.clientY-sy0);
+      if(moved<5){
+        // Badge und Station zuerst pruefen: beide liegen ueber der Raumflaeche, ein Tipp
+        // darauf soll ihr Menue oeffnen und den Raum NICHT aus-/abwaehlen.
+        const bdg = downT && downT.closest && downT.closest('.rbadge');
+        const sth = downT && downT.closest && downT.closest('.stationhit');
+        if (sth) openStationMenu();
+        else if (bdg) openRoomSettings(+bdg.dataset.raum);
+        else if(downT && downT.getAttribute && downT.getAttribute('class')==='thit')
+          selectSeg(+downT.getAttribute('data-i'));
+        else { const seg=hitRoom(e.clientX,e.clientY); if(seg!=null) selectRoom(seg); }
+      }
+    });
+    const ctr=()=>{ const r=stage.getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2]; };
+    document.getElementById('z-in').onclick =()=> zoomAt(...ctr(),1.3);
+    document.getElementById('z-out').onclick=()=> zoomAt(...ctr(),1/1.3);
+    document.getElementById('z-reset').onclick=fitVisible;
+    window.addEventListener('resize', ()=>{ box=visibleBox(); clamp(); applyT(); });
+    function setupToggle(btnId, cls){ const b=document.getElementById(btnId);
+      b.addEventListener('click', ()=>{ const o=document.body.classList.toggle(cls); b.classList.toggle('off',o); }); }
+    setupToggle('t-trail','trail-off');
+    // "Änderungen": kein CSS-Toggle, sondern Neuzeichnen (rot = seit Schnappschuss geändert)
+    document.getElementById('t-changes').addEventListener('click', () => {
+      showChanges = !showChanges;
+      if (showChanges && !changeSnap) takeChangeSnapshot(); // Fallback: ab jetzt vergleichen
+      document.getElementById('t-changes').classList.toggle('off', !showChanges);
+      drawFills();
+    });
+    // "Raster": Diagnose-Gitter (s. drawGrid)
+    document.getElementById('t-grid').addEventListener('click', () => {
+      showGrid = !showGrid;
+      document.getElementById('t-grid').classList.toggle('off', !showGrid);
+      buildOverlay();
+    });
+    // "Flüssig": Abspielkopf + Gleitfahrt an/aus
+    const smoothBtn=document.getElementById('t-smooth');
+    smoothBtn.classList.toggle('off', !smooth);
+    smoothBtn.addEventListener('click', () => {
+      smooth = !smooth;
+      try{ localStorage.setItem('dreameSmooth', smooth?'1':'0'); }catch(e){}
+      smoothBtn.classList.toggle('off', !smooth);
+      if (!smooth){
+        // sofort auf den echten Stand: laufende Animationen stoppen, Spur ganz zeichnen,
+        // Roboter auf die gemeldete Position
+        if(animReq){ cancelAnimationFrame(animReq); animReq=null; }
+        stopGlide();
+        headDist=totalDist(); animT=1; renderTrail();
+        if(robotMk && robotPos) placeRobot(robotPos[0],robotPos[1],robotAngle());
+      }
+    });
+  }
+
+  // ---- kompletter (Neu-)Aufbau aus CloudData ----
+  async function rebuild(cloudStr){
+    await decode(cloudStr);
+    for (const id of [...selectedRooms]) if (!rooms[id]) selectedRooms.delete(id); // weggefallene Räume abwählen
+    // Fahrspur: bevorzugt die im Adapter aufgesammelte Spur (trpts = [x,y,breakFlag]),
+    // sonst das rohe tr-Stück der aktuellen Karte.
+    const newTrail = Array.isArray(META.trpts)
+      ? META.trpts.map(a => ({ x:a[0], y:a[1], operator: a[2] ? 'S' : 'L' }))
+      : decodeTr(META.tr);
+    drawFills(); buildOverlay(); buildRoomList(); setupZoom(); updateLabels(); updateCleanPanel();
+    // Gemeldeten Blickwinkel weiterschieben: der bisherige wird zum Start der Animation,
+    // der neue zum Ziel. Nur hier (ein Kartenpaket = ein Winkel-Uebergang), nicht in
+    // feedTrail — das wird pro Paket mehrfach aufgerufen.
+    const repAng = robotAngle();
+    if (repAng !== null && repAng !== undefined){ angFrom = (angTo===null) ? repAng : angTo; angTo = repAng; }
+    // NACH buildOverlay (dort entstehen trailEl/robotMk neu): Abspielkopf auf die neue
+    // Spur ansetzen. Er bleibt stehen, wo er ist, und faehrt das neue Stueck ab.
+    feedTrail(newTrail);
+    if (firstFit){ fitVisible(); firstFit=false; } else { box=visibleBox(); clamp(); applyT(); }
+  }
+
+  // ---- Live-Updates einzelner Werte ----
+  function updateRobot(pos){ robotPos=pos;
+    document.getElementById('v-robot').textContent = pos?`${pos[0]}, ${pos[1]}`:'–';
+    if (pos && !robotMk) robotMk = iconMarker(pos[0],pos[1],ICON.ROBOT,ICON_SIZE.robot,'robot-mk','ROBOT');
+    // Faehrt der Abspielkopf gerade eine Spur ab, fuehrt er den Marker — hier nicht
+    // eingreifen, sonst zerren zwei Quellen daran.
+    // Sonst gleitet er weich zur neuen gemeldeten Position (Rueckfahrt zur Station).
+    // WICHTIG: die Bedingung ist "faehrt gerade" (animReq), NICHT "gibt es eine Spur" —
+    // die bleibt naemlich nach der Reinigung liegen und der Marker klebte dann fuer immer
+    // an ihrem Ende, waehrend der Roboter heimfuhr.
+    if (pos && !animReq && robotMk){
+      if (smooth) glide(pos, robotAngle());
+      else placeRobot(pos[0], pos[1], robotAngle()); // "Flüssig" aus: direkt auf die Meldung
+    }
+  }
+  function updateCharger(pos){ chargerPos=pos;
+    document.getElementById('v-charger').textContent = pos?`${pos[0]}, ${pos[1]}`:'–';
+    if (chargerMk && pos) moveIcon(chargerMk,pos[0],pos[1],ICON_SIZE.charger);
+    else if (pos && !chargerMk) chargerMk = iconMarker(pos[0],pos[1],ICON.CHARGER,ICON_SIZE.charger);
+  }
+  const isBreak = op => op==='S'||op==='M'||op==='W'; // absoluter Neustart = Umsetzfahrt
+
+  // ===== Abspielkopf (🎨 bewusste Abweichung von HA) =====
+  // HA zeichnet je Frame ein PNG: Roboter springt, Spur ist sofort komplett da.
+  // Wir spielen die neu hinzugekommenen Spurpunkte als Fahrstrecke ab:
+  //   - die Spur waechst nur HINTER dem Roboter
+  //   - der Roboter schaut in Fahrtrichtung und dreht erst am Endpunkt auf die
+  //     vom Geraet gemeldete Richtung
+  // Der Kopf laeuft ueber die Strecke, gemessen in Millimetern (Weltkoordinaten).
+  // Umsetzfahrten (Spurbruch S/M/W) haben Laenge 0 -> dort wird gesprungen, nicht gefahren.
+  let cum=[];            // cum[i] = Streckenlaenge bis trailPts[i]
+  let headDist=0;        // aktuelle Position des Kopfes auf dieser Strecke
+  let animFrom=0, animTo=0, animT0=0, animDur=3000, animReq=null;
+  let lastDataTs=0, frameGap=3000;  // gemessener Abstand der Kartenpakete (gleitend)
+  let staticD='', staticIdx=0;      // fertig gezeichneter Teil (nur bei neuen Daten gebaut)
+  // Vom GERAET gemeldeter Blickwinkel: der des vorigen Pakets (Start der Animation) und der
+  // des aktuellen (Ziel). Der gemeldete Winkel gilt fuer den Zeitpunkt des Pakets, also fuer
+  // das ENDE der Fahrt — deshalb wird er wie die Position interpoliert, statt sofort zu
+  // gelten. Beides Messwerte, keine Rechnerei.
+  let angFrom=null, angTo=null;
+  let animT=1;                      // Fortschritt der laufenden Animation (0..1)
+  // Angezeigter Winkel, der dem Ziel weich nachlaeuft. Ersetzt die frueher genutzte
+  // CSS-Transition: die sah gut aus, schob das Icon aber in eine eigene GPU-Ebene und
+  // machte es beim Zoomen unscharf. Noetig ist die Glaettung, weil die Tangente INNERHALB
+  // eines Spursegments konstant ist und beim Punktwechsel springt — zwischen benachbarten
+  // Punkten liegen im Median 45° Rasterrauschen (an echten Spurdaten gemessen).
+  let dispAngle=null, lastSyncTs=0;
+  const ANG_TAU=90;                 // Zeitkonstante der Glaettung in ms
+  // Zuletzt ANGEZEIGTE Roboter-Position (Weltkoord). Muss ausserhalb des Icons liegen, weil
+  // buildOverlay die Marker bei jedem Kartenpaket neu erzeugt — am Element gemerkte Werte
+  // waeren dann weg. Jede Bewegung des Roboters laeuft ueber placeRobot(), damit dieser
+  // Wert immer stimmt: er ist der Startpunkt jeder neuen Gleitfahrt.
+  let dispPos=null;
+  // Umschalter "Flüssig": an = Roboter faehrt die Strecke ab (schoen, hinkt aber bis zu
+  // einem Paket ~3 s hinterher, weil Spur und Position denselben Zeitstempel haben);
+  // aus = er springt alle ~3 s auf die gemeldete Position (haesslich, aber naeher an der
+  // Wirklichkeit). Wahl bleibt ueber Neuladen erhalten.
+  let smooth = true;
+  try{ smooth = localStorage.getItem('dreameSmooth') !== '0'; }catch(e){}
+  function placeRobot(wx,wy,ang){
+    if(!robotMk) return;
+    dispPos={ x:wx, y:wy };
+    if(ang!==null && ang!==undefined) dispAngle=ang;
+    moveIcon(robotMk,wx,wy,ICON_SIZE.robot,ang);
+  }
+  // Winkel auf dem kurzen Weg interpolieren
+  function interpAngle(a,b,t){
+    if(a===null||a===undefined) return b;
+    if(b===null||b===undefined) return a;
+    let d=b-a; while(d>180)d-=360; while(d<-180)d+=360;
+    return a+d*t;
+  }
+
+  const noLine = p => isBreak(p.operator); // Punkt beginnt einen neuen Teilpfad
+  function buildCum(pts){
+    const c=[0];
+    for(let i=1;i<pts.length;i++){
+      // Auch Spurbrueche (Umsetzfahrten) zaehlen zur Strecke: der Roboter FAEHRT sie
+      // wirklich, das Geraet zeichnet sie nur nicht auf.
+      c[i]=c[i-1]+Math.hypot(pts[i].x-pts[i-1].x, pts[i].y-pts[i-1].y);
+    }
+    return c;
+  }
+  const totalDist = () => cum.length ? cum[cum.length-1] : 0;
+  // Wieviele Punkte haben old und neu am Anfang gemeinsam? (Der l2r-Punkt am Ende wechselt
+  // je Paket — deshalb kann man nicht einfach die Laenge vergleichen.)
+  function commonPrefix(a,b){
+    const n=Math.min(a.length,b.length); let i=0;
+    while(i<n && a[i].x===b[i].x && a[i].y===b[i].y && a[i].operator===b[i].operator) i++;
+    return i;
+  }
+  // Position + Fahrtrichtung an einer Streckenlaenge.
+  // onBreak = der Kopf faehrt gerade eine Umsetzfahrt ab (Position ja, Linie nein)
+  //           -> Position ja, Linie nein.
+  function posAt(dist){
+    if(!trailPts.length) return null;
+    if(dist<=0) return { p:trailPts[0], idx:0, angle:null, onBreak:false };
+    for(let i=1;i<trailPts.length;i++){
+      if(cum[i]>=dist){
+        const segLen=cum[i]-cum[i-1];
+        const a=trailPts[i-1], b=trailPts[i];
+        const onBreak=noLine(b);      // Umsetzfahrt: wird gefahren, aber nicht gemalt
+        if(segLen<=0) return { p:b, idx:i, angle:null, onBreak };
+        const t=(dist-cum[i-1])/segLen;
+        const p={ x:a.x+(b.x-a.x)*t, y:a.y+(b.y-a.y)*t };
+        // Fahrtrichtung im BILDSCHIRM messen (wS spiegelt Y) — moveIcon dreht mit -Winkel,
+        // deshalb hier das Vorzeichen passend zur bestehenden Header-Drehung.
+        const [x1,y1]=wS(a.x,a.y), [x2,y2]=wS(b.x,b.y);
+        const ang = -Math.atan2(y2-y1, x2-x1)*180/Math.PI;
+        return { p, idx:i, angle:ang, onBreak };
+      }
+    }
+    return { p:trailPts[trailPts.length-1], idx:trailPts.length-1, angle:null, onBreak:false };
+  }
+  // Pfad-String fuer Punkte [0..idx]; Spurbrueche beginnen einen neuen Teilpfad
+  function pathStr(upto){
+    let d='', started=false;
+    for(let i=0;i<=upto && i<trailPts.length;i++){
+      const [sx,sy]=wS(trailPts[i].x,trailPts[i].y);
+      if(!started || isBreak(trailPts[i].operator)){ d+='M'+sx.toFixed(1)+' '+sy.toFixed(1)+' '; started=true; }
+      else d+='L'+sx.toFixed(1)+' '+sy.toFixed(1)+' ';
+    }
+    return d;
+  }
+
+  function renderTrail(){ if(!trailEl) return;
+    // Sichtbar ist nur die Strecke bis zum Abspielkopf.
+    const head=posAt(headDist);
+    let d=staticD;
+    if(head){
+      for(let i=staticIdx+1; i<trailPts.length && cum[i]<=headDist; i++){
+        const [sx,sy]=wS(trailPts[i].x,trailPts[i].y);
+        d += (noLine(trailPts[i]) ? 'M' : 'L') + sx.toFixed(1)+' '+sy.toFixed(1)+' ';
+      }
+      // Faehrt der Kopf gerade eine Umsetzfahrt ab, endet die Spur beim letzten echten
+      // Punkt — der Roboter bewegt sich sichtbar weiter, hinterlaesst aber keine Linie.
+      if(!head.onBreak){
+        const [hx,hy]=wS(head.p.x, head.p.y);
+        if(d) d += 'L'+hx.toFixed(1)+' '+hy.toFixed(1)+' '; else d='M'+hx.toFixed(1)+' '+hy.toFixed(1)+' ';
+      }
+    }
+    trailEl.setAttribute('d', d.trim());
+    const pts=trailPts;
+    if(trailHit){ trailHit.innerHTML='';
+      for(let i=0;i<pts.length-1;i++){
+        if(cum[i+1]>headDist) break;                // noch nicht gefahren -> nicht klickbar
+        if(noLine(pts[i+1])) continue; // Verbinder wird nicht gezeichnet -> nicht klickbar
+        const [x1,y1]=wS(pts[i].x,pts[i].y), [x2,y2]=wS(pts[i+1].x,pts[i+1].y);
+        const l=document.createElementNS(NS,'line'); l.setAttribute('class','thit'); l.setAttribute('data-i',i);
+        l.setAttribute('x1',x1.toFixed(1)); l.setAttribute('y1',y1.toFixed(1));
+        l.setAttribute('x2',x2.toFixed(1)); l.setAttribute('y2',y2.toFixed(1));
+        trailHit.appendChild(l);
+      }
+    }
+  }
+
+  /**
+   * Neue Spurdaten aus einem Kartenpaket uebernehmen und den Abspielkopf darauf ansetzen.
+   * Der Kopf bleibt stehen, wo er ist, und faehrt die neu hinzugekommene Strecke ab.
+   */
+  function feedTrail(pts){
+    const old=trailPts;
+    const nw=(pts||[]).slice();
+    const c=commonPrefix(old,nw);
+    const newCum=buildCum(nw);
+    // Der Kopf darf NIE zurueckspringen. Wichtig wegen l2r: dessen Punkt haengt als letzter
+    // an der Spur und wird in jedem Paket durch einen neuen ersetzt. Wuerde man den Kopf auf
+    // den letzten gemeinsamen Punkt zurueckziehen, faehrt der Roboter vor, springt zurueck,
+    // faehrt wieder vor — sichtbares Jo-Jo (in der Simulation mit echten Frames: bis 2263 mm
+    // Ruecksprung je Paket). Der Kopf bleibt stehen; jenseits des gemeinsamen Teils liegt er
+    // dann eben auf der neuen Geometrie, die ohnehin zur selben Roboterposition fuehrt.
+    if(c===0 && old.length) headDist=0;               // komplett neue Spur (neuer Auftrag)
+    else headDist=Math.min(headDist, newCum.length?newCum[newCum.length-1]:0);
+    trailPts=nw; cum=newCum;
+    // Nicht abfahren, sondern sofort ans Ende springen, wenn die Strecke unplausibel lang
+    // ist. Zwei Faelle: (1) erstes Paket nach dem Laden/Neustart — da kommt die KOMPLETTE
+    // bisherige Spur, der Roboter wuerde sonst einmal quer durch die Wohnung rasen;
+    // (2) Kartenwechsel mitten im Auftrag. Messung an echten Frames: ~530 mm je Paket,
+    // Maximum 902 mm — 2500 mm sind also reichlich Luft nach oben.
+    const MAX_DRIVE=2500;
+    if(!old.length || totalDist()-headDist > MAX_DRIVE) headDist=totalDist();
+    // fertigen Teil bis zum Kopf einfrieren, damit pro Bild nur das kurze Endstueck neu entsteht
+    staticIdx=0; while(staticIdx+1<trailPts.length && cum[staticIdx+1]<=headDist) staticIdx++;
+    staticD=pathStr(staticIdx);
+    // Dauer = gemessener Abstand der Kartenpakete (gedeckelt), damit der Kopf genau dann
+    // ankommt, wenn das naechste Paket eintrifft.
+    const now=performance.now();
+    if(lastDataTs){ const gap=now-lastDataTs; if(gap>500 && gap<15000) frameGap = frameGap*0.7 + gap*0.3; }
+    lastDataTs=now;
+    animFrom=headDist; animTo=totalDist(); animT0=now;
+    animDur=Math.max(1000, Math.min(5000, frameGap));
+    if(animTo>animFrom && smooth){ animT=0; startAnim(); return; }
+    // Nichts abzufahren (z.B. frisch geladen, oder die Spur waechst nicht mehr): nur die
+    // Spur zeichnen. Den Marker NICHT anfassen — er gehoert dann der Positionsmeldung
+    // (updateRobot). Ein syncRobotToHead() wuerde ihn ans SPURENDE setzen, und das ist bei
+    // einer liegengebliebenen Spur mitten im Raum, waehrend der Roboter in der Station steht.
+    headDist=animTo; animT=1; renderTrail();
+  }
+
+  function startAnim(){
+    if(animReq) cancelAnimationFrame(animReq);
+    stopGlide(); // ab jetzt fuehrt der Abspielkopf — die Gleitfahrt darf nicht dagegenhalten
+    animReq=requestAnimationFrame(stepAnim);
+  }
+  function stepAnim(){
+    animReq=null;
+    const t=Math.min(1,(performance.now()-animT0)/animDur);
+    animT=t;
+    headDist=animFrom+(animTo-animFrom)*t;
+    renderTrail();
+    const turnDone=syncRobotToHead();
+    // Weiterlaufen, solange gefahren ODER noch gedreht wird — sonst bliebe die
+    // Schlussdrehung auf halbem Weg stehen.
+    if(t<1 || !turnDone) animReq=requestAnimationFrame(stepAnim);
+  }
+
+  /**
+   * Roboter-Marker an den Abspielkopf setzen (Position + Blickrichtung).
+   *
+   * Die Blickrichtung kommt aus der Spur-Tangente (52 mm Aufloesung, folgt der gefahrenen
+   * Kurve genau). Am Ende der Fahrt (animT>=1) gilt der vom Geraet gemeldete Winkel — das
+   * ist die Schlussdrehung auf die tatsaechliche Ausrichtung.
+   *
+   * Ohne Spur (Rueckfahrt zur Station) laeuft hier nichts: dann setzt updateRobot() den
+   * Marker direkt mit dem gemeldeten Winkel.
+   */
+  function syncRobotToHead(){
+    if(!robotMk) return true;
+    const h=posAt(headDist); if(!h) return true;
+    // Ziel-Blickrichtung. Am Ende der Fahrt (animT>=1) gilt der gemeldete Winkel — das ist
+    // die Schlussdrehung: waehrend der Fahrt Spur-Tangente, am Endpunkt die tatsaechliche
+    // Ausrichtung.
+    const target = (h.angle===null || animT>=1) ? interpAngle(angFrom, angTo, animT) : h.angle;
+    // Weich nachfuehren statt springen: die Tangente ist innerhalb eines Spursegments
+    // konstant und springt beim Punktwechsel (Median 45°, an echten Daten gemessen).
+    // Zeitbasiert, damit die Drehung bei jeder Bildrate gleich aussieht.
+    const now=performance.now();
+    const dt=lastSyncTs ? Math.min(200, now-lastSyncTs) : 16;
+    lastSyncTs=now;
+    if(dispAngle===null) dispAngle=target;
+    else {
+      let d=target-dispAngle; while(d>180)d-=360; while(d<-180)d+=360;
+      dispAngle += d * (1-Math.exp(-dt/ANG_TAU));
+      if(Math.abs(d)<0.3) dispAngle=target;
+    }
+    placeRobot(h.p.x,h.p.y, dispAngle);
+    let rest=target-dispAngle; while(rest>180)rest-=360; while(rest<-180)rest+=360;
+    return Math.abs(rest)<0.3; // Drehung fertig?
+  }
+  // ===== Fahrt OHNE Spur (z.B. Rueckfahrt zur Station) =====
+  // Das Geraet schickt dabei nachweislich keine Spur (an Rohdaten geprueft: tr = "" in
+  // allen 11 Paketen der Rueckfahrt), sondern nur alle ~3 s Position und Winkel. Genau die
+  // werden hier interpoliert — mehr braucht Fluessigkeit nicht. Die Spur enthaelt ohnehin
+  // keine Drehrichtung; der Winkel kommt IMMER aus dem Header.
+  //
+  // Bewusst voellig getrennt vom Abspielkopf: Diese Fahrt hat mit der Spur nichts zu tun.
+  // Der fruehere Versuch ("Ghost-Punkte" ins Spur-Array stopfen) ist genau daran
+  // gescheitert — die Punkte erbten Tangenten-Winkel, Praefix-Vergleich und Zeichenlogik,
+  // die hier alle nicht hingehoeren. Daraus kamen: Rueckwaerts falsch herum, Vor-und-
+  // Zurueck-Fahren und der am Spurende klebende Marker.
+  let glFrom=null, glTo=null, glAngFrom=null, glAngTo=null, glT0=0, glDur=3000, glReq=null;
+  // Auf welchem Anteil der Fahrt die Drehung erledigt ist. Ein Saugroboter hat zwei
+  // Antriebsraeder und kann nicht schraeg fahren: er dreht sich ZUERST in die Fahrtrichtung
+  // und faehrt dann los. Der neue Winkel steht real also schon nach dem ersten Stueck.
+  // (An echten Daten passte die Fahrtrichtung in 5 von 10 Paketen zum neuen Winkel — also
+  // "erst drehen, dann fahren" — und in 5 zum alten. Gleichmaessig ueber die ganze Fahrt zu
+  // verteilen ist deshalb die schlechteste Wahl: nie richtig, immer halb daneben.)
+  const GL_TURN_FRAC=0.3;
+  function glCurrent(){
+    if(!glFrom || !glTo) return null;
+    const t=Math.min(1,(performance.now()-glT0)/glDur);
+    return { x:glFrom.x+(glTo.x-glFrom.x)*t, y:glFrom.y+(glTo.y-glFrom.y)*t };
+  }
+  /** Neue Positionsmeldung: von dort, wo er gerade steht, weich zur neuen Position gleiten. */
+  function glide(pos, ang){
+    if(!robotMk || !pos) return;
+    // Startpunkt ist, wo das Icon GERADE STEHT — nicht die neue Position. (Genau der Fehler
+    // zuvor: Start = Ziel -> Abstand 0 -> keine Fahrt, und buildOverlay setzte ihn hart hin.)
+    const start = dispPos;
+    if(!start){ placeRobot(pos[0], pos[1], ang); return; }         // erstes Mal: einfach setzen
+    if(Math.hypot(pos[0]-start.x, pos[1]-start.y) < 5) return;     // steht — nichts zu tun
+    glFrom={ x:start.x, y:start.y }; glTo={ x:pos[0], y:pos[1] };
+    // Blickrichtung = Fahrtrichtung dieses Abschnitts. Bei Rueckwaertsfahrt entsprechend
+    // nach hinten. Ob rueckwaerts, sagt der GEMELDETE Winkel: weicht er um mehr als 90° von
+    // der Fahrtrichtung ab, faehrt er rueckwaerts (an echten Daten: beim Einparken meldet
+    // das Geraet 274°, waehrend die Fahrtrichtung 93° ist).
+    // Da der Abschnitt eine Gerade ist, ist die Fahrtrichtung ueber die ganze Fahrt
+    // konstant — er dreht sich also nicht mehr unterwegs, sondern nur zwischen den
+    // Abschnitten. Die Frage "wann genau hat er gedreht?" stellt sich damit nicht mehr.
+    const travel = Math.atan2(glTo.y-glFrom.y, glTo.x-glFrom.x)*180/Math.PI;
+    let back=false;
+    if(ang!==null && ang!==undefined){
+      let d=ang-travel; while(d>180)d-=360; while(d<-180)d+=360;
+      back = Math.abs(d)>90;
+    }
+    glAngFrom = (dispAngle!==null) ? dispAngle : (back ? travel+180 : travel);
+    glAngTo = back ? travel+180 : travel;
+    glT0=performance.now();
+    glDur=Math.max(1000, Math.min(5000, frameGap)); // gemessener Paketabstand
+    if(glReq) cancelAnimationFrame(glReq);
+    glReq=requestAnimationFrame(glStep);
+  }
+  function glStep(){
+    glReq=null;
+    if(!robotMk || !glFrom || !glTo) return;
+    const t=Math.min(1,(performance.now()-glT0)/glDur);
+    const p={ x:glFrom.x+(glTo.x-glFrom.x)*t, y:glFrom.y+(glTo.y-glFrom.y)*t };
+    // Drehung frueh: nach GL_TURN_FRAC der Fahrt steht der neue Winkel, den Rest faehrt er
+    // damit durch — statt sich ueber die ganze Strecke langsam mitzudrehen.
+    placeRobot(p.x, p.y, interpAngle(glAngFrom, glAngTo, Math.min(1, t/GL_TURN_FRAC)));
+    if(t<1) glReq=requestAnimationFrame(glStep);
+  }
+  function stopGlide(){ if(glReq){ cancelAnimationFrame(glReq); glReq=null; } glFrom=null; glTo=null; }
+
+  function selectSeg(i){
+    const pts=trailPts; if(i<0||i>=pts.length-1) return;
+    const a=pts[i], b=pts[i+1];
+    const [x1,y1]=wS(a.x,a.y), [x2,y2]=wS(b.x,b.y);
+    trailSel.setAttribute('x1',x1); trailSel.setAttribute('y1',y1);
+    trailSel.setAttribute('x2',x2); trailSel.setAttribute('y2',y2); trailSel.style.display='inline';
+    const dist=Math.round(Math.hypot(b.x-a.x, b.y-a.y));
+    document.getElementById('dbg').textContent =
+      `Segment #${i} → #${i+1}\n`+
+      `op:    ${a.operator} → ${b.operator}\n`+
+      `von:   ${a.x}, ${a.y}\n`+
+      `nach:  ${b.x}, ${b.y}\n`+
+      `dist:  ${dist} mm\n`+
+      `type:  ${b.type}   mode: ${b.cleaningMode}\n`+
+      `strIdx:${b.stringIndex}  ptIdx:${b.pointIndex}`;
+  }
+
+  // ===== Verbindung =====
+  function loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script');
+    s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+  function connect(){ return new Promise(res=>{
+    if(!window.io){ res(null); return; }
+    const sock = io(IOB, {transports:['websocket','polling'], timeout:5000});
+    let done=false; const fin=v=>{ if(!done){done=true; res(v);} };
+    sock.on('connect', ()=>fin(sock));
+    sock.on('connect_error', ()=>fin(null));
+    setTimeout(()=>fin(null), 6000);
+  });}
+  const sGet=(sock,id)=> new Promise(r=> sock.emit('getState', id, (e,st)=> r(st?st.val:null)));
+
+  /**
+   * Geraete-ID selbst herausfinden, wenn sie nicht per URL/localStorage vorgegeben ist:
+   * die Adapter-Objekte heissen dreame.0.<did>.… — aus einem beliebigen davon laesst sich
+   * die ID ablesen. So laeuft das Widget beim Nutzer ohne jede Einstellung.
+   */
+  async function ermittleDid(sock){
+    const states = await new Promise(r =>
+      sock.emit('getStates', 'dreame.0.*.status.state', (e, st) => r(st || {})));
+    const dids = [...new Set(Object.keys(states).map(id => id.split('.')[2]))].filter(Boolean);
+    if (!dids.length) return null;
+    if (dids.length > 1) console.warn('[dreame] Mehrere Geräte gefunden:', dids.join(', '),
+      '— nehme das erste. Anderes wählen mit ?did=<id>');
+    return dids[0];
+  }
+
+  (async ()=>{
+    try {
+      setzeIcons();
+      setupCleanPanel();
+      if (!IOB){
+        errEl.textContent = 'Kein ioBroker-Server bekannt.\n\n'
+          + 'Beim Aufruf über den Adapter wird er automatisch erkannt.\n'
+          + 'Lokal über file:// bitte angeben, z. B.:\n'
+          + '  index.html?iob=http://192.168.1.10:8082\n\n'
+          + 'Die Angabe wird im Browser gemerkt und muss nur einmal mit.';
+        setConn('🔴 nicht verbunden','#ff8098');
+        return;
+      }
+      let sock=null;
+      try { await loadScript(IOB+'/socket.io/socket.io.js'); sock = await connect(); } catch(e){}
+      if (sock){
+        SOCK=sock; // für Steuerbefehle
+        if (!DID){
+          DID = await ermittleDid(sock);
+          if (!DID){
+            errEl.textContent = 'Kein Dreame-Gerät gefunden.\n\n'
+              + 'Läuft der Adapter (dreame.0) und hat er ein Gerät angelegt?\n'
+              + 'Bestimmtes Gerät wählen: ?did=<Geräte-ID>';
+            setConn('🔴 kein Gerät','#ff8098');
+            return;
+          }
+          baueIds();
+        }
+        robotPos   = parsePt(await sGet(sock, IDS.robot));
+        chargerPos = parsePt(await sGet(sock, IDS.charger));
+        const cloud = await sGet(sock, IDS.cloud); // Fahrspur (tr) steckt in der Karte -> rebuild setzt sie
+        await rebuild(cloud);
+        const SKEYS=['state','status','battery','charging','cprog','dprog','carea','ctime','tstat','cpaused',
+                     'wash','empty','hotw','tank','mopstat','drain','dustcol'];
+        for (const k of SKEYS) setVst(k, await sGet(sock, IDS[k]));
+        Object.values(IDS).forEach(id=> sock.emit('subscribe', id));
+
+        // ---- Raum-Einstellungen + Betriebsart vom Geraet holen ----
+        // roomCleanset fuellt die Chips und das Raum-Overlay; customized-cleaning entscheidet,
+        // ob die globalen Regler ueberhaupt etwas bewirken.
+        const CUST_ID = `dreame.0.${DID}.remote.customized-cleaning`;
+        const CS_RE   = new RegExp(`^dreame\\.0\\.${DID}\\.map\\.cleanset\\.(\\d+)\\.RoomSettings$`);
+        customizedCleaning = !!(await sGet(sock, CUST_ID));
+        for (const id of Object.keys(rooms||{})){
+          const v = await sGet(sock, `dreame.0.${DID}.map.cleanset.${id}.RoomSettings`);
+          if (typeof v === 'string') { try { roomCleanset[id] = JSON.parse(v); } catch(e){} }
+          sock.emit('subscribe', `dreame.0.${DID}.map.cleanset.${id}.RoomSettings`);
+        }
+        sock.emit('subscribe', CUST_ID);
+        updateCleanPanel();
+
+        sock.on('stateChange', (id, st)=>{ if(!st) return;
+          if (id===IDS.robot)   updateRobot(parsePt(st.val));
+          else if (id===IDS.charger) updateCharger(parsePt(st.val));
+          else if (id===IDS.cloud)   rebuild(st.val); // rebuild dekodiert die Spur aus META.tr
+          else if (id===CUST_ID){ customizedCleaning = !!st.val; updateCleanPanel(); }
+          else if (CS_RE.test(id)){
+            const rid = id.match(CS_RE)[1];
+            if (typeof st.val === 'string'){ try { roomCleanset[rid] = JSON.parse(st.val); updateCleanPanel(); } catch(e){} }
+          }
+          else { const k=SKEYS.find(kk=>IDS[kk]===id); if(k) setVst(k, st.val); }
+        });
+        sock.on('disconnect', ()=> setConn('🔴 getrennt','#ff8098'));
+        sock.on('connect',    ()=> setConn('🟢 Live','#38e29b'));
+        setConn('🟢 Live','#38e29b');
+      } else {
+        // Frueher lag hier ein Rueckfall auf snapshot.js (eingefrorene Beispieldaten).
+        // Die wird nicht mehr ausgeliefert — sie zeigte die Wohnung des Entwicklers.
+        errEl.textContent = 'Keine Verbindung zu ' + IOB + '\n\n'
+          + 'Läuft der web-Adapter? Ist die Adresse erreichbar?';
+        setConn('🔴 keine Verbindung','#ff8098');
+      }
+    } catch(e){ errEl.textContent='Fehler: '+e.message+'\n'+(e.stack||''); setConn('🔴 Fehler','#ff8098'); }
+  })();
+  </script>
+</body>
+</html>
