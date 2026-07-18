@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Dreame Karte – eigenes Widget</title>
+<!-- Nur der Ausgangstext; sobald das Geraet bekannt ist, wird daraus "Karte – <Name>" -->
+<title>Karte</title>
 <style>
   :root{
     --bg:#0f1420; --panel:#171e2e; --panel2:#1d2740; --line:#2a3550;
@@ -2436,7 +2437,9 @@
         // common.name ist mal eine Zeichenkette, mal ein Sprachobjekt {de:…, en:…}
         let dn = dev && dev.common && dev.common.name;
         if (dn && typeof dn === 'object') dn = dn.de || dn.en || '';
-        document.getElementById('devName').textContent = dn || ('Dreame ' + DID);
+        dn = dn || ('Dreame ' + DID);
+        document.getElementById('devName').textContent = dn;
+        document.title = 'Karte – ' + dn;   // Beschriftung des Browser-Reiters
         robotPos   = parsePt(await sGet(sock, IDS.robot));
         chargerPos = parsePt(await sGet(sock, IDS.charger));
         const cloud = await sGet(sock, IDS.cloud); // Fahrspur (tr) steckt in der Karte -> rebuild setzt sie
