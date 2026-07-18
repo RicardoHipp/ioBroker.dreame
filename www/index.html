@@ -269,10 +269,8 @@
             <button class="tgl" id="t-smooth" title="An: Roboter fährt die Strecke flüssig ab, hinkt der gemeldeten Position dafür bis zu einem Paket (~3 s) hinterher. Aus: springt alle ~3 s exakt auf die gemeldete Position.">Flüssig</button>
             <button class="tgl off" id="t-grid" title="Diagnose: Gitternetz auf den Zellgrenzen + Fadenkreuze an bekannten Weltkoordinaten. Zeigt, ob das Overlay auf den Kartenpixeln sitzt.">Raster</button>
           </div>
-          <div class="pickrow" id="uiRow">
-            <span class="pk">Anzeigegröße</span>
-            <span class="pv"><span id="uiVal">100 %</span></span>
-          </div>
+          <label class="slabel">Anzeigegröße: <b id="uiVal">100 %</b></label>
+          <input type="range" id="uiRange" min="100" max="200" step="5" value="100">
           <h2 style="margin-top:16px">Räume</h2>
           <div class="roomlist" id="roomList"></div>
         </div>
@@ -398,15 +396,19 @@
   // ---- Anzeigegroesse der Bedienflaechen ----
   // Bewusst im Browser gemerkt und nicht im Adapter: das Tablett braucht eine andere
   // Groesse als der Rechner am Schreibtisch. Die Einstellung gehoert also zum Geraet.
-  const UI_STUFEN = [1, 1.25, 1.5, 1.75, 2];
+  const UI_MIN = 1, UI_MAX = 2;
   let uiFaktor = 1;
   try { const g = parseFloat(localStorage.getItem('dreame.ui'));
-        if (UI_STUFEN.includes(g)) uiFaktor = g; } catch (e) {}
+        if (g >= UI_MIN && g <= UI_MAX) uiFaktor = g; } catch (e) {}
   function setzeUi(f, merken){
-    uiFaktor = f;
+    uiFaktor = Math.min(UI_MAX, Math.max(UI_MIN, f));
+    f = uiFaktor;
     document.documentElement.style.setProperty('--ui', String(f));
     const v = document.getElementById('uiVal');
     if (v) v.textContent = Math.round(f*100) + ' %';
+    const r = document.getElementById('uiRange');
+    if (r){ if (+r.value !== Math.round(f*100)) r.value = Math.round(f*100);
+            reglerFuellung(r); }
     if (merken) { try { localStorage.setItem('dreame.ui', String(f)); } catch (e) {} }
     // Die Karte hat jetzt anders viel Platz — Ausschnitt neu einpassen, Marken nachziehen.
     // Beim ersten Aufruf steht die Karte noch nicht; das faengt der Versuch ab.
@@ -1977,9 +1979,12 @@
     function setupToggle(btnId, cls){ const b=document.getElementById(btnId);
       b.addEventListener('click', ()=>{ const o=document.body.classList.toggle(cls); b.classList.toggle('off',o); }); }
     // Anzeigegroesse (Zahnrad-Menue). Der Kartenzoom bleibt davon unberuehrt.
-    document.getElementById('uiRow').onclick = ()=> openPicker('Anzeigegröße',
-      UI_STUFEN.map(f=>({ id:f, name:Math.round(f*100)+' %' })),
-      uiFaktor, (f)=> setzeUi(f, true));
+    // Waehrend des Ziehens (input) nur anzeigen, gemerkt wird erst beim Loslassen
+    // (change) — sonst schreibt jeder Zwischenschritt in den Speicher.
+    const uiR = document.getElementById('uiRange');
+    uiR.oninput  = ()=> setzeUi(+uiR.value/100, false);
+    uiR.onchange = ()=> setzeUi(+uiR.value/100, true);
+    reglerFuellung(uiR);
     setupToggle('t-trail','trail-off');
     // "Änderungen": kein CSS-Toggle, sondern Neuzeichnen (rot = seit Schnappschuss geändert)
     document.getElementById('t-changes').addEventListener('click', () => {
