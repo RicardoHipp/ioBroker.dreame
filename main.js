@@ -5286,8 +5286,20 @@ class Dreame extends utils.Adapter {
           hit >= 0 ? 'GEFUNDEN' : 'NICHT drin'}. JSON-Anfang: ${keys}`);
         if (hit >= 0) this.log.info(`[PROBE] cleanset-Ausschnitt: ...${inflated.slice(hit, hit + 160)}...`);
       } else {
-        const hit = raw.indexOf('cleanset');
-        this.log.info(`[PROBE] ${objName}: kein mapstr. cleanset im Rohtext ${hit >= 0 ? 'GEFUNDEN' : 'nicht'}. Anfang: ${raw.slice(0, 200)}`);
+        // kein mapstr -> ganzer body ist evtl. direkt zlib-komprimiert (Anfang "eF" = 0x78 0x9c)
+        let b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+        b64 += '='.repeat((4 - (b64.length % 4)) % 4);
+        try {
+          const zlib = require('zlib');
+          const inflated = zlib.inflateSync(Buffer.from(b64, 'base64')).toString('latin1');
+          const hit = inflated.indexOf('cleanset');
+          const j = inflated.indexOf('{');
+          this.log.info(`[PROBE] ${objName}: BLOB entpackt (${inflated.length} B). cleanset ${
+            hit >= 0 ? 'GEFUNDEN' : 'NICHT drin'}. Anfang: ${inflated.slice(j >= 0 ? j : 0, (j >= 0 ? j : 0) + 280)}`);
+          if (hit >= 0) this.log.info(`[PROBE] cleanset-Ausschnitt: ...${inflated.slice(hit, hit + 180)}...`);
+        } catch (e3) {
+          this.log.info(`[PROBE] ${objName}: kein mapstr, Blob-inflate-Fehler ${e3.message}. Rohanfang: ${raw.slice(0, 120)}`);
+        }
       }
     } catch (e) {
       this.log.info(`[PROBE] ${objName}: Fehler ${(e && e.message) || e}`);
