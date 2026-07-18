@@ -61,6 +61,17 @@ wenn das Gerät neue Einstellungen bereitstellt, und holt sie sich aktiv.
 *(Während einer laufenden Reinigung wird bewusst nicht nachgeladen — da kommen die Werte
 ohnehin mit den Kartendaten.)*
 
+### Mopp-Trocknung lässt sich starten und beenden
+**Vorher:** Für die Mopp-Trocknung gab es keinen Schalter. Man konnte sie weder anstoßen
+noch abbrechen — der vorhandene Knopf „Mopp waschen" löste immer einen Waschgang aus,
+auch wenn man eigentlich trocknen wollte.
+**Jetzt:** Zwei neue Schalter unter `remote`: „Start Mop Drying" und „Stop Mop Drying".
+Praktisch vor allem der zweite, denn die Trocknung startet nach jedem Waschgang von
+selbst und läuft lange — jetzt kann man sie vorzeitig beenden.
+*(Hintergrund: Der Roboter kennt für Waschen und Trocknen nur einen einzigen Befehl und
+unterscheidet sie über einen Zusatzwert. Ohne die neuen Schalter ließ sich dieser
+Zusatzwert gar nicht mitschicken.)*
+
 ### Raum-Einstellungen landen im richtigen Raum
 **Vorher:** Änderte man die Einstellung eines Raums (Saugstärke, Wasser, Modus), wurde
 teilweise ein **anderer** Raum verstellt — z. B. Änderung an der Küche landete im Wohnzimmer.
