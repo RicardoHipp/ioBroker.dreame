@@ -78,6 +78,13 @@ teilweise ein **anderer** Raum verstellt — z. B. Änderung an der Küche lande
 **Jetzt:** Die Einstellung geht an den Raum, den man auch gemeint hat.
 *(Betrifft auch das Original; als Fehlerbericht formuliert.)*
 
+### Menüs lassen sich auch mit dem Finger öffnen
+**Vorher:** Auf dem Tablett blitzte das Stationsmenü beim Antippen nur kurz auf und war
+sofort wieder weg. Mit der Maus am PC ging es.
+**Jetzt:** Es bleibt offen. Außerdem ist die Fläche über der Ladestation größer geworden
+und wächst mit der eingestellten Anzeigegröße mit, und ein Antippen wird nicht mehr als
+Verschieben der Karte gewertet, wenn der Finger dabei ein paar Pixel verrutscht.
+
 ### Mehr Platz für die Karte
 **Vorher:** Über der Karte lag eine Titelzeile, die nur den Namen des Widgets zeigte.
 **Jetzt:** Die Zeile ist weg, die Karte bekommt die Höhe. Der Name des Roboters steht

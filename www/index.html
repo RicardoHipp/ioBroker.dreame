@@ -915,7 +915,23 @@
       else b.onclick=()=>{ closePicker(); onPick(o.id); };
       box.appendChild(b);
     }
-    ovl.classList.add('open');
+    oeffneOvl();
+  }
+  /**
+   * Overlay oeffnen und den Zeitpunkt merken.
+   *
+   * Warum der Zeitpunkt: bei einer Beruehrung schickt der Browser nach den Zeiger-
+   * Ereignissen zusaetzlich ein nachgereichtes Maus-Klick-Ereignis. Fuer das wird neu
+   * geprueft, was unter dem Finger liegt — und das ist dann die eben geoeffnete
+   * Abdunklung. Der Schliessen-Handler unten haette das Fenster damit sofort wieder
+   * zugemacht (es blitzte nur kurz auf). Mit der Maus gibt es diese zweite Welle nicht,
+   * deshalb trat es nur auf dem Tablett auf.
+   */
+  let ovlAufSeit = 0;
+  const OVL_SPERRE = 400;   // ms; nachgereichte Ereignisse kommen sofort, Menschen nicht
+  function oeffneOvl(){
+    ovlAufSeit = (window.performance ? performance.now() : Date.now());
+    document.getElementById('pickOvl').classList.add('open');
   }
   function closePicker(){ document.getElementById('pickOvl').classList.remove('open'); }
 
@@ -1002,7 +1018,7 @@
       aktualisiereKnoepfe();
       // Nach einer Unter-Auswahl (Modus/Saugstaerke/Wiederholung) hat openPicker das Overlay
       // geschlossen — zeichne() stellt das Raum-Fenster deshalb komplett wieder her, offen.
-      document.getElementById('pickOvl').classList.add('open');
+      oeffneOvl();
     };
 
     // Speichern nur anbieten, wenn wirklich etwas anders ist
@@ -1178,7 +1194,13 @@
     document.getElementById('c-home').onclick=()=> cmd('remote.return-to-dock', true);
     // Overlay schliessen: Abbrechen, Klick auf den dunklen Hintergrund, Esc
     document.getElementById('pickCancel').onclick=closePicker;
-    document.getElementById('pickOvl').onclick=(e)=>{ if(e.target.id==='pickOvl') closePicker(); };
+    document.getElementById('pickOvl').onclick=(e)=>{
+      if (e.target.id!=='pickOvl') return;
+      // Nachwirkung des Tippens, das dieses Fenster gerade geoeffnet hat (s. oeffneOvl)
+      const jetzt = (window.performance ? performance.now() : Date.now());
+      if (jetzt - ovlAufSeit < OVL_SPERRE) return;
+      closePicker();
+    };
     document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') closePicker(); });
     applyMode(); updateCleanPanel();
   }
@@ -1881,7 +1903,9 @@
     const g = document.createElementNS(NS,'g');
     g.setAttribute('class','stationhit');
     const c = document.createElementNS(NS,'circle');
-    c.setAttribute('cx',0); c.setAttribute('cy',0); c.setAttribute('r',24);  // 48 px Durchmesser
+    // 56 px Durchmesser — groesser als ein Badge, weil die Station kein sichtbares Ziel
+    // hat, an dem man sich beim Tippen ausrichten kann.
+    c.setAttribute('cx',0); c.setAttribute('cy',0); c.setAttribute('r',28);
     c.setAttribute('fill','transparent');
     g.appendChild(c);
     const [sx,sy] = wS(chargerPos[0], chargerPos[1]);
@@ -1892,7 +1916,9 @@
   }
   function skaliereStationHit(){
     if (!stationHit) return;
-    const s = 1 / (cell * scale);
+    // uiFaktor wie bei den Raummarken (skaliereMarken) — sonst bleibt die Station als
+    // einziges Ziel klein, waehrend Badges und Knoepfe mitwachsen.
+    const s = uiFaktor / (cell * scale);
     stationHit.setAttribute('transform',
       `translate(${stationHit.dataset.x} ${stationHit.dataset.y}) scale(${s})`);
   }
@@ -1967,7 +1993,10 @@
     stage.addEventListener('pointerup', e=>{ if(aufBedienung(e.target)) return;
       drag=false; wrap.classList.remove('drag');
       const moved=Math.hypot(e.clientX-sx0, e.clientY-sy0);
-      if(moved<5){
+      // Ein Finger rollt beim Aufsetzen fast immer ein paar Pixel weiter, eine Maus steht
+      // still. Mit einer gemeinsamen Schwelle von 5 px gingen Tipper auf Glas verloren.
+      const schwelle = (e.pointerType==='touch' || e.pointerType==='pen') ? 12 : 5;
+      if(moved<schwelle){
         // Badge und Station zuerst pruefen: beide liegen ueber der Raumflaeche, ein Tipp
         // darauf soll ihr Menue oeffnen und den Raum NICHT aus-/abwaehlen.
         const bdg = downT && downT.closest && downT.closest('.rbadge');
