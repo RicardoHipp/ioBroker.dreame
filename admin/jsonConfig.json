@@ -125,6 +125,10 @@
         "pl": "Pobierz mapę",
         "uk": "Отримати карту",
         "zh-cn": "获取地图"
+      },
+      "help": {
+        "en": "Required for the map. Without it the map freezes after the first packet: no travel path, no cleaned areas, no moving robot. Leave enabled unless you do not use the map at all.",
+        "de": "Wird für die Karte benötigt. Ohne diese Option bleibt die Karte nach dem ersten Paket stehen: keine Fahrspur, keine gereinigten Flächen, kein mitlaufender Roboter. Nur abschalten, wenn die Karte gar nicht genutzt wird."
       }
     },
 
