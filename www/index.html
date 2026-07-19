@@ -174,13 +174,55 @@
   :root[data-leiste="links"] .body{flex-direction:row-reverse}
   :root[data-leiste="links"] .side{border-left:none;
     border-right:1px solid var(--trennlinie, var(--line))}
+  /* Waagerecht: die Leiste bekommt die volle Breite und eine feste Hoehe. Fest ist hier
+     richtig, weil der Inhalt feststeht — wem es zu klein ist, der dreht an der
+     Anzeigegroesse, und die Hoehe waechst mit (.side ist nicht gezoomt, deshalb steht
+     var(--ui) im Rechenausdruck).
+     Die Gruppen stehen nebeneinander statt untereinander; reicht die Breite nicht, rollt
+     die Leiste waagerecht, statt Inhalt abzuschneiden. */
+  :root[data-leiste="unten"] .body{flex-direction:column}
+  :root[data-leiste="oben"]  .body{flex-direction:column-reverse}
+  :root[data-leiste="oben"] .side,
+  :root[data-leiste="unten"] .side{
+    width:auto; height:calc(158px * var(--ui)); overflow-x:auto; overflow-y:hidden;
+    border-left:none; border-right:none}
+  :root[data-leiste="unten"] .side{border-top:1px solid var(--trennlinie, var(--line))}
+  :root[data-leiste="oben"]  .side{border-bottom:1px solid var(--trennlinie, var(--line))}
+  /* KEINE Hoehenangabe hier: .sidein ist gezoomt, eine Prozenthoehe wuerde ein zweites
+     Mal mit --ui multipliziert (derselbe Fehler wie frueher bei der Spalte). Die Hoehe
+     kommt vom Inhalt, begrenzt wird sie von .side. */
+  :root[data-leiste="oben"] .sidein,
+  :root[data-leiste="unten"] .sidein{
+    display:flex; align-items:flex-start; gap:18px; padding:12px 16px}
+  :root[data-leiste="oben"] .gruppe,
+  :root[data-leiste="unten"] .gruppe{margin-top:0; flex:none; width:230px}
+  :root[data-leiste="oben"] .g-steuer,
+  :root[data-leiste="unten"] .g-steuer{width:190px}
+  :root[data-leiste="oben"] .g-statistik,
+  :root[data-leiste="unten"] .g-statistik{width:200px}
+  /* Ueberschrift und Zahnrad der ersten Gruppe: waagerecht steht das Zahnrad sonst weit
+     rechts vom Text, weil die Gruppe schmaler ist als die Spalte. */
+  :root[data-leiste="oben"] .sidehead,
+  :root[data-leiste="unten"] .sidehead{margin-bottom:8px}
   /* Schmal (Handy): Karte oben, Bedienung darunter — dann darf die Seite rollen, statt
      alles in die Fensterhoehe zu quetschen. */
   @media (max-width:720px){
+    /* Die Lage-Einstellung wird hier bewusst ueberschrieben: eine Spalte neben der Karte
+       waere auf dem Handy unbrauchbar schmal, eine Leiste mit fester Hoehe wuerde ihren
+       Inhalt abschneiden. Deshalb immer stapeln. Die Auswahlliste bleibt sichtbar, der
+       Hinweis dazu steht im Einstellungs-Dialog.
+       Die Selektoren tragen [data-leiste], damit sie dieselbe Gewichtung haben wie die
+       Regeln oben — bei Gleichstand gewinnt die spaetere, also diese hier. */
     .app{height:auto; min-height:100%}
-    .body{display:block}
-    .stage{height:60vh; min-height:320px}
-    .side{width:auto; border-left:none; border-top:1px solid var(--line); overflow:visible}
+    .body, :root[data-leiste] .body{display:block}
+    .stage, :root[data-leiste] .stage{height:60vh; min-height:320px}
+    .side, :root[data-leiste] .side{
+      width:auto; height:auto; overflow:visible;
+      border:none; border-top:1px solid var(--trennlinie, var(--line))}
+    :root[data-leiste] .sidein{display:block; height:auto; padding:16px}
+    :root[data-leiste] .gruppe{width:auto}
+    :root[data-leiste] .gruppe + .gruppe{margin-top:18px}
+    :root[data-leiste] .gruppe + .g-steuer{margin-top:10px}
   }
   .side h2{font-size:11px;text-transform:uppercase;letter-spacing:1px;
     color:var(--muted);margin:0 0 12px}
@@ -252,7 +294,11 @@
   /* Gesperrt = der eingestellte Modus nutzt den Wert gar nicht (z. B. Wasser beim
      reinen Saugen). Sichtbar bleiben, damit klar ist, dass es ihn gibt. */
   .wert:disabled{opacity:.4; cursor:not-allowed}
-  .clean{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+  .clean{display:flex;flex-direction:column;gap:10px}
+  /* Abstand zwischen den Gruppen. Der Wert von 10 px zwischen Auswahl und Steuerung
+     bildet den frueheren Zustand nach, als beide noch in einem Block mit gap:10 lagen. */
+  .gruppe + .gruppe{margin-top:18px}
+  .gruppe + .g-steuer{margin-top:10px}
   .selroom{font-weight:800;font-size:14px;color:var(--accent,#4a78e0)}
   /* Auswahl-Zeile: tippt man drauf, oeffnet sich ein Overlay mit den Optionen.
      Touch-freundlich (grosses Tap-Ziel) und platzsparend; dasselbe Muster soll spaeter
@@ -347,26 +393,34 @@
           <button id="z-reset" title="Zurücksetzen" aria-label="Ansicht zurücksetzen"></button>
         </div>
       </div>
+      <!-- Der Inhalt ist in Gruppen gefasst. Senkrecht (Leiste links/rechts) stehen sie
+           untereinander und sehen aus wie vorher; waagerecht (oben/unten) stellt das CSS
+           sie nebeneinander. Ohne diese Klammern liesse sich der flache Elementstrom
+           nicht spaltenweise anordnen. -->
       <div class="side"><div class="sidein">
-        <div class="sidehead">
-          <h2>Reinigung</h2>
-          <button class="gear" id="gearBtn" title="Einstellungen" aria-label="Einstellungen"></button>
-        </div>
-        <div class="clean" id="cleanPanel">
-          <div class="selroom" id="selRoomName">Raum antippen zum Wählen</div>
-          <div class="pickrow" id="custRow">
-            <span class="pk">Reinigung</span>
-            <span class="pv"><span id="custVal">Einheitlich</span></span>
+        <section class="gruppe g-wahl">
+          <div class="sidehead">
+            <h2>Reinigung</h2>
+            <button class="gear" id="gearBtn" title="Einstellungen" aria-label="Einstellungen"></button>
           </div>
-          <div id="globalOpts">
-            <div class="pickrow" id="modeRow">
-              <span class="pk">Modus</span>
-              <span class="pv"><span id="modeVal">Saugen</span></span>
+          <div class="clean">
+            <div class="selroom" id="selRoomName">Raum antippen zum Wählen</div>
+            <div class="pickrow" id="custRow">
+              <span class="pk">Reinigung</span>
+              <span class="pv"><span id="custVal">Einheitlich</span></span>
+            </div>
+            <div id="globalOpts">
+              <div class="pickrow" id="modeRow">
+                <span class="pk">Modus</span>
+                <span class="pv"><span id="modeVal">Saugen</span></span>
+              </div>
+            </div>
+            <div class="slabel" id="indivHint" style="display:none;opacity:.7">
+              Jeder Raum wird nach seinen gespeicherten Einstellungen gereinigt — am Raum in der Karte ändern.
             </div>
           </div>
-          <div class="slabel" id="indivHint" style="display:none;opacity:.7">
-            Jeder Raum wird nach seinen gespeicherten Einstellungen gereinigt — am Raum in der Karte ändern.
-          </div>
+        </section>
+        <section class="gruppe g-steuer">
           <!-- Saugstärke und Wassermenge nur als Anzeige, beide in einer Zeile. Antippen
                öffnet den Regler im Overlay; was der Modus gar nicht nutzt, ist gesperrt. -->
           <div id="globalSliders" class="werte">
@@ -382,21 +436,27 @@
             <button class="abtn stop" id="c-stop" title="Stop" aria-label="Reinigung anhalten"></button>
             <button class="abtn home" id="c-home" title="Home" aria-label="Zurück zur Ladestation"></button>
           </div>
-        </div>
-        <h2 style="margin-top:18px">Status</h2>
-        <div class="statusbox">
-          <div class="stext" id="stateText">–</div>
-          <div class="ssub" id="stateSub">–</div>
-        </div>
-        <!-- Meldungen: nur sichtbar, wenn wirklich etwas anliegt (s. updateInfo) -->
-        <div class="warnbox" id="warnBox" hidden></div>
-        <h2 style="margin-top:18px" id="verbrauchTitel" hidden>Verbrauchsmaterial</h2>
-        <div class="verbrauch" id="verbrauch"></div>
-        <details class="stats" id="statsBox" hidden>
-          <summary><span class="sumtext">Statistik</span></summary>
-          <div class="statlist" id="statList"></div>
-        </details>
-        <div id="err"></div>
+        </section>
+        <section class="gruppe g-status">
+          <h2>Status</h2>
+          <div class="statusbox">
+            <div class="stext" id="stateText">–</div>
+            <div class="ssub" id="stateSub">–</div>
+          </div>
+          <!-- Meldungen: nur sichtbar, wenn wirklich etwas anliegt (s. updateInfo) -->
+          <div class="warnbox" id="warnBox" hidden></div>
+        </section>
+        <section class="gruppe g-verbrauch">
+          <h2 id="verbrauchTitel" hidden>Verbrauchsmaterial</h2>
+          <div class="verbrauch" id="verbrauch"></div>
+        </section>
+        <section class="gruppe g-statistik">
+          <details class="stats" id="statsBox" hidden>
+            <summary><span class="sumtext">Statistik</span></summary>
+            <div class="statlist" id="statList"></div>
+          </details>
+          <div id="err"></div>
+        </section>
       </div></div>
     </div>
   </div>
@@ -534,8 +594,10 @@
     { id:'transparent', name:'Transparent', desc:'Der Hintergrund der Seite scheint durch — für VIS' },
   ];
   const LEISTE = [
-    { id:'rechts', name:'Rechts', desc:'Bedienung neben der Karte' },
-    { id:'links',  name:'Links',  desc:'Bedienung neben der Karte' },
+    { id:'rechts', name:'Rechts', desc:'Als Spalte neben der Karte' },
+    { id:'links',  name:'Links',  desc:'Als Spalte neben der Karte' },
+    { id:'unten',  name:'Unten',  desc:'Als Leiste über die volle Breite' },
+    { id:'oben',   name:'Oben',   desc:'Als Leiste über die volle Breite' },
   ];
   let farbWahl   = holeWahl('farben', ['auto','hell','dunkel'], 'auto');
   let hgWahl     = holeWahl('hintergrund', ['gefuellt','transparent'], 'gefuellt');
