@@ -201,7 +201,11 @@
   :root[data-leiste="unten"] .g-kopf{
     display:flex; align-items:center; gap:14px;
     padding-bottom:12px; border-bottom:1px solid var(--line)}
-  /* Zurueck auf die Reihen-Form: kein Raster, Aktionen rechts, Knoepfe in Eigenbreite */
+  /* Zurueck auf die Reihen-Form: kein Raster, Aktionen rechts, Knoepfe in Eigenbreite.
+     Das Zahnrad steht hier wieder links (Markup-Reihenfolge) und mittig — die
+     Rasterangaben oben greifen im Flexaufbau nicht mehr, align-self aber schon. */
+  :root[data-leiste="oben"] .g-kopf .gear,
+  :root[data-leiste="unten"] .g-kopf .gear{align-self:center}
   :root[data-leiste="oben"] .g-kopf .actbtns,
   :root[data-leiste="unten"] .g-kopf .actbtns{margin-left:auto}
   :root[data-leiste="oben"] .g-kopf .abtn,
@@ -276,7 +280,12 @@
      Grundform ist die GESTAPELTE (fuer die schmale Spalte links/rechts): oben Zahnrad und
      Zustand, darunter Meldungen, darunter die Aktionen ueber die volle Breite. Waagerecht
      wird daraus weiter unten eine Reihe — dort ist Breite im Ueberfluss. */
-  .g-kopf{display:grid; grid-template-columns:auto 1fr; gap:10px 12px; align-items:center}
+  .g-kopf{display:grid; grid-template-columns:1fr auto; gap:10px 12px; align-items:center}
+  /* Das Zahnrad sitzt oben rechts in der Ecke, obwohl es im Markup zuerst kommt — dort
+     steht es waagerecht ganz links (wie im Entwurf), hier waere links vor dem Zustand
+     unruhig. Die Reihenfolge im Markup bleibt, das Raster setzt es um. */
+  .g-kopf .gear{grid-column:2; grid-row:1; align-self:start}
+  .g-kopf .kopfstatus{grid-column:1; grid-row:1}
   .g-kopf .warnbox, .g-kopf .actbtns{grid-column:1 / -1}
   .g-kopf .actbtns{margin-left:0}
   .g-kopf .abtn{flex:1}
