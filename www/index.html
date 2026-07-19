@@ -2286,7 +2286,10 @@
     109: 'Schmutzwassertank blockiert.', 110: 'Schmutzwassertank Pumpenfehler.',
     111: 'Das Wischpad ist nicht richtig installiert.',
     112: 'Der Wasserstand des Wischpads ist ungewöhnlich, bitte den Wischpad rechtzeitig reinigen.',
-    114: 'Die Reinigungsaufgabe ist abgeschlossen, bitte das Wischpad reinigen.',
+    // Bewusst NICHT HAs deutscher Text. Der lautet dort "bitte das Wischpad reinigen" und
+    // laesst das Wort "washboard" aus dem englischen Original weg ("please clean the mop
+    // pad washboard"). Gemeint ist das Waschbrett in der Station, nicht das Pad.
+    114: 'Das Waschbrett des Wischmopps reinigen',
     116: 'Bitte den Frischwassertank umgehend überprüfen und nachfüllen.',
     117: 'Basisstation nicht eingeschaltet',
     118: 'Der Wasserstand im Schmutzwassertank ist zu hoch.',
@@ -2341,13 +2344,16 @@
     if (n === 20 && VST.charging === 1) return true;
     // Waschstation vorhanden = das Geraet meldet self-wash-base-status. Dieselbe Pruefung
     // wie bei kannWaschen() weiter unten; HA fragt dafuer capability.self_wash_base ab.
-    //   68  "Wischpad demontieren"
-    //   114 "Reinigungsaufgabe abgeschlossen, bitte das Wischpad reinigen"
-    // Beides sind Aufforderungen an den Nutzer, die eine Station mit Waschfunktion selbst
-    // erledigt — sie stehen nach JEDEM Wischauftrag dran und waeren damit Dauerrauschen.
-    // HA zeigt sie auch bei solchen Geraeten an (es fuehrt 114 nur als klar- und
-    // quittierbare Warnung, device.py 5606-5620); das Ausblenden ist unsere Entscheidung.
-    if ((n === 68 || n === 114) && VST.wash != null) return true;
+    // 68 "Wischpad demontieren" ist eine Aufforderung, die eine Station mit Waschfunktion
+    // selbst erledigt — sie stuende nach jedem Wischauftrag da. HA zeigt sie auch bei
+    // solchen Geraeten an; das Ausblenden ist unsere Entscheidung.
+    //
+    // 114 wurde hier kurzzeitig mit ausgeblendet — irrtuemlich: HAs deutscher Text
+    // ("bitte das Wischpad reinigen") laesst die Meldung ueberfluessig wirken, im
+    // englischen Original steht aber "clean the mop pad WASHBOARD". Gemeint ist das
+    // Waschbrett in der Station, und das muss man tatsaechlich selbst saubermachen.
+    // Siehe FEHLER_DE[114] — dort steht deshalb ein eigener Text, nicht HAs deutscher.
+    if (n === 68 && VST.wash != null) return true;
     return false;
   }
 

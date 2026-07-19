@@ -149,11 +149,14 @@ anzeigen.
 Außerdem wird unterschieden: Ein Teil der Meldungen ist gar kein Defekt, sondern nur ein
 Hinweis. Die erscheinen gelb, echte Störungen rot.
 
-Und Meldungen, die für das eigene Gerät gar nicht gelten, werden ganz weggelassen — bei
-Robotern mit Waschstation etwa „Wischpad demontieren" und „Reinigung abgeschlossen, bitte
-das Wischpad reinigen": Die Station wäscht und trocknet das Pad ja selbst, sonst stünde
-die Aufforderung nach jedem Wischauftrag da. Ebenso „Akku leer", solange der Roboter
-gerade lädt.
+Und Meldungen, die für das eigene Gerät gar nicht gelten, werden ganz weggelassen — etwa
+die Erinnerung „Wischpad demontieren" bei Robotern mit Waschstation, die das Pad ja selbst
+waschen und trocknen. Ebenso „Akku leer", solange der Roboter gerade lädt.
+
+Eine Meldung ist außerdem neu übersetzt: Home Assistant zeigt nach dem Wischen „bitte das
+Wischpad reinigen". Im englischen Original steht dort aber *washboard* — gemeint ist das
+Waschbrett in der Station, nicht das Pad. Bei uns steht deshalb „Das Waschbrett des
+Wischmopps reinigen".
 
 ### Die Karte lässt sich drehen
 **Jetzt:** Im Zahnrad-Menü gibt es **Karte drehen** mit 0°, 90°, 180° und 270°. Nützlich,
