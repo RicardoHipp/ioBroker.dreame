@@ -313,6 +313,11 @@
   /* Gesperrt = der eingestellte Modus nutzt den Wert gar nicht (z. B. Wasser beim
      reinen Saugen). Sichtbar bleiben, damit klar ist, dass es ihn gibt. */
   .wkarte:disabled{opacity:.4;cursor:not-allowed}
+  /* Kompaktform (Saugstufe, Wassermenge): Symbol und Zahl in einer Zeile, ohne
+     Beschriftung. Das Symbol sagt, worum es geht; die Langfassung steht im Dialog. */
+  .wkarte.kompakt{flex-direction:row;align-items:center;justify-content:center;gap:8px}
+  .wkarte.kompakt .wv{font-size:15px;font-variant-numeric:tabular-nums}
+  .wkarte.kompakt .wk{opacity:.8}
   /* Meldungen (volle Tanks, Fehler ...). Der Kasten ist leer und ausgeblendet, solange
      nichts anliegt — keine Liste gruener Haken, die man erst lesen muss. */
   .warnbox{background:var(--panel);border:1px solid var(--warn,#e0a33a);border-radius:10px;
@@ -482,12 +487,14 @@
                 <span class="wk">Modus</span>
                 <span class="wv" id="modeVal">Saugen</span>
               </button>
-              <button class="wkarte" id="suctionTile" type="button">
-                <span class="wk">Saugstufe</span>
+              <!-- Nur Symbol und Zahl: was gemeint ist, sagt das Symbol, und die
+                   Langfassung steht im Dialog, den ein Tipp oeffnet. -->
+              <button class="wkarte kompakt" id="suctionTile" type="button">
+                <span class="wk"></span>
                 <span class="wv" id="suctionVal">2</span>
               </button>
-              <button class="wkarte" id="waterTile" type="button">
-                <span class="wk">Wassermenge</span>
+              <button class="wkarte kompakt" id="waterTile" type="button">
+                <span class="wk"></span>
                 <span class="wv" id="waterVal">3</span>
               </button>
             </div>
@@ -1251,16 +1258,15 @@
     // Globale Regler ZEIGEN den Stand der gewaehlten Raeume: gleicher Wert -> dieser Wert,
     // unterschiedliche -> "Gemischt (min–max)". Verstellen setzt dann alle auf einmal.
     if (!customizedCleaning && gewaehlt.length){
-      // Bei einem einheitlichen Wert steht die Langfassung da (bei der Saugstufe also Zahl
-      // UND Wort). Weichen die gewaehlten Raeume voneinander ab, wird auf "min–max"
-      // verkuerzt — "2 · Standard–3 · Stark" waere auf der Karte nicht mehr lesbar.
-      const zeig = (label, werte, kurz, lang) => {
+      // Auf den beiden Kompaktkarten steht nur die Zahl — das Wort dazu sieht man im
+      // Dialog. Weichen die gewaehlten Raeume voneinander ab, steht dort "min–max".
+      const zeig = (label, werte, text) => {
         const lb=document.getElementById(label);
         if(!lb) return;
         const min=Math.min(...werte), max=Math.max(...werte);
-        lb.textContent = (min===max) ? (lang||kurz)(min) : `${kurz(min)}–${kurz(max)}`;
+        lb.textContent = (min===max) ? text(min) : `${text(min)}–${text(max)}`;
       };
-      zeig('suctionVal', gewaehlt.map(effSaug),   (v)=>String(v+1), suctText);
+      zeig('suctionVal', gewaehlt.map(effSaug),   (v)=>String(v+1));
       zeig('waterVal',   gewaehlt.map(effWasser), (v)=>String(v));
     }
     // Sperren, was der eingestellte Modus gar nicht nutzt: beim reinen Saugen gibt es
@@ -1519,10 +1525,11 @@
     for (const k of document.querySelectorAll('.wkarte')){
       k.insertAdjacentHTML('beforeend', uiIcon('weiter', 15, 'chev'));
     }
-    // Symbol vor der Beschriftung, wo eines passt
+    // Auf den Kompaktkarten steht das Symbol anstelle der Beschriftung — es sagt allein,
+    // worum es geht. Deshalb groesser als ein blosses Zierzeichen.
     for (const [id, name] of [['suctionTile','saugen'], ['waterTile','wasser']]){
       const el = document.querySelector('#' + id + ' .wk');
-      if (el) el.insertAdjacentHTML('afterbegin', uiIcon(name, 13));
+      if (el) el.insertAdjacentHTML('afterbegin', uiIcon(name, 17));
     }
     // Statistik-Kopfzeile: Symbol davor, Klapp-Pfeil dahinter (dreht sich per CSS)
     // Symbol vorn, Pfeil hinten — wie in den Auswahlzeilen
