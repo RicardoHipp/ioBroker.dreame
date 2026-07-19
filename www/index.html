@@ -315,7 +315,9 @@
   .wkarte:disabled{opacity:.4;cursor:not-allowed}
   /* Kompaktform (Saugstufe, Wassermenge): Symbol und Zahl in einer Zeile, ohne
      Beschriftung. Das Symbol sagt, worum es geht; die Langfassung steht im Dialog. */
-  .wkarte.kompakt{flex-direction:row;align-items:center;justify-content:center;gap:8px}
+  /* Linksbuendig wie die Karten darueber: die vier stehen als Gruppe untereinander, und
+     eine gemeinsame senkrechte Kante liest sich ruhiger als je eigene Ausrichtung. */
+  .wkarte.kompakt{flex-direction:row;align-items:center;justify-content:flex-start;gap:10px}
   .wkarte.kompakt .wv{font-size:15px;font-variant-numeric:tabular-nums}
   .wkarte.kompakt .wk{opacity:.8}
   /* Meldungen (volle Tanks, Fehler ...). Der Kasten ist leer und ausgeblendet, solange
