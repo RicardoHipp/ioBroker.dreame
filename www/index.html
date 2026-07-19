@@ -2341,7 +2341,13 @@
     if (n === 20 && VST.charging === 1) return true;
     // Waschstation vorhanden = das Geraet meldet self-wash-base-status. Dieselbe Pruefung
     // wie bei kannWaschen() weiter unten; HA fragt dafuer capability.self_wash_base ab.
-    if (n === 68 && VST.wash != null) return true;
+    //   68  "Wischpad demontieren"
+    //   114 "Reinigungsaufgabe abgeschlossen, bitte das Wischpad reinigen"
+    // Beides sind Aufforderungen an den Nutzer, die eine Station mit Waschfunktion selbst
+    // erledigt — sie stehen nach JEDEM Wischauftrag dran und waeren damit Dauerrauschen.
+    // HA zeigt sie auch bei solchen Geraeten an (es fuehrt 114 nur als klar- und
+    // quittierbare Warnung, device.py 5606-5620); das Ausblenden ist unsere Entscheidung.
+    if ((n === 68 || n === 114) && VST.wash != null) return true;
     return false;
   }
 

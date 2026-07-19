@@ -149,9 +149,11 @@ anzeigen.
 Außerdem wird unterschieden: Ein Teil der Meldungen ist gar kein Defekt, sondern nur ein
 Hinweis. Die erscheinen gelb, echte Störungen rot.
 
-Und Meldungen, die für das eigene Gerät gar nicht gelten, werden ganz weggelassen — etwa
-die Erinnerung „Wischpad demontieren" bei Robotern mit Waschstation, die das Pad ja selbst
-waschen und trocknen. Ebenso „Akku leer", solange der Roboter gerade lädt.
+Und Meldungen, die für das eigene Gerät gar nicht gelten, werden ganz weggelassen — bei
+Robotern mit Waschstation etwa „Wischpad demontieren" und „Reinigung abgeschlossen, bitte
+das Wischpad reinigen": Die Station wäscht und trocknet das Pad ja selbst, sonst stünde
+die Aufforderung nach jedem Wischauftrag da. Ebenso „Akku leer", solange der Roboter
+gerade lädt.
 
 ### Die Karte lässt sich drehen
 **Jetzt:** Im Zahnrad-Menü gibt es **Karte drehen** mit 0°, 90°, 180° und 270°. Nützlich,
