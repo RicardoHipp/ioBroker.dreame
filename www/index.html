@@ -1229,11 +1229,13 @@
   // ===== Raum-Badges auf der Karte =====
   // Masse in Bildschirmpixeln (die Marke wird gegen den Zoom skaliert, s. skaliereMarken).
   const BDG = { hoehe:22, ikon:14, ziffer:7, luecke:2, abstand:8, rand:8 };
-  // Das Badge wird zusaetzlich vergroessert — es ist die Schaltflaeche auf der Karte und
-  // soll auf dem Tablett gut zu treffen sein. Bewusst NUR das Badge und nicht die ganze
+  // Das Badge wird zusaetzlich vergroessert. Bewusst NUR das Badge und nicht die ganze
   // Raummarke: der Raumname darueber soll seine Groesse behalten, sonst ueberdecken sich
   // die Beschriftungen enger Raeume.
-  const BDG_SKALA = 1.5;
+  // Frueher 1.5, damit es auf dem Tablett gut zu treffen ist. Seit es in den meisten
+  // Faellen reine Anzeige ist (Einheitlich-Betrieb und waehrend der Fahrt), zaehlt die
+  // Fingergroesse nicht mehr — es nahm nur Platz auf der Karte weg.
+  const BDG_SKALA = 1.05;
 
   /** Ein Icon aus UI_ICONS als SVG-Gruppe, auf px-Kantenlaenge gebracht. */
   function svgIkon(name, px, klasse){
