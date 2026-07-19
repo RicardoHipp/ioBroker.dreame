@@ -155,7 +155,13 @@
   .stationhit{cursor:pointer}
   .trail{fill:none; stroke:#ffffff; stroke-width:1.1; stroke-linejoin:round;
     stroke-linecap:round; opacity:.85; pointer-events:none;}
-  body.trail-off .trail{display:none}
+  /* Wischspur: dieselbe Farbe wie die Saugspur, aber rund zehnmal so breit und
+     halbtransparent — genau HAs Verhaeltnis (map.py 10803: width * 10.5, mop_path-Farbe
+     mit Alpha 100 gegen 255). Keine runden Kappen: HA setzt sie nur an der Saugspur.
+     Die Maske (#spurmaske) beschneidet sie auf die Raumflaechen. */
+  .mopspur{fill:none; stroke:#ffffff; stroke-width:11.5; stroke-linejoin:round;
+    stroke-linecap:butt; opacity:.33; pointer-events:none;}
+  body.trail-off .trail, body.trail-off .mopspur{display:none}
   /* BEWUSST KEINE CSS-Transition auf dem Roboter-Icon: ein Uebergang auf `transform` schiebt
      das Icon in eine eigene GPU-Ebene. Die wird in Icon-Groesse (~4,5 SVG-Einheiten) gerastert
      und vom Karten-Zoom hochskaliert -> es wird waehrend der Fahrt sichtbar unscharf.
@@ -877,6 +883,14 @@
     146:'Treppensteiger an der Station', 147:'Treppensteiger verlässt die Station',
   };
   const parseTrail = v => { try{ return JSON.parse(v).points||[]; }catch(e){ return []; } };
+  // Zahl im trpts-Feld -> HA PathType (types.py 2601-2605). Gegenstueck zu TRPT_TYP
+  // in lib/mapMerge.js. S = saugen, W = saugen+wischen, M = wischen, L = Fortsetzung.
+  const TRPT_OP = { 0:'L', 1:'S', 2:'W', 3:'M' };
+  // Welcher Abschnitt gehoert in welche Spur — 1:1 HA (map.py 10769-10788):
+  // die Saugspur bekommt S und W, die Wischspur M und W. Abschnitte vom Typ W stehen
+  // also in BEIDEN, deshalb sieht man dort die duenne Linie auf dem breiten Balken.
+  const istSaugSpur  = op => op === 'S' || op === 'W';
+  const istWischSpur = op => op === 'M' || op === 'W';
   // Roher Dreame-tr-String -> Pfadpunkte (Weltkoord in mm).
   //  L<dx>,<dy> = relative Linie (aufsummieren) | l<x>,<y> = absolute Linie
   //  M/W/S<x>,<y> = absoluter Sprung (Umsetzfahrt = "Stift hoch", via isBreak nicht gezeichnet)
@@ -979,7 +993,7 @@
   const stage=document.getElementById('stage'), wrap=document.getElementById('mapwrap');
   let W,He,GS,H,META,rooms,raw,mapStart,MAPW,MAPH;
   let robotMk=null, chargerMk=null, robotPos=null, chargerPos=null;
-  let trailEl=null, trailPts=[];
+  let trailEl=null, mopEl=null, trailPts=[];
   let scale=1,tx=0,ty=0,minScale=1,box={x0:0,y0:0,x1:1,y1:1}, firstFit=true;
   const selectedRooms=new Set(); // per Klick gewählte Räume (Mehrfachauswahl, Klick toggelt)
   let SOCK=null;              // socket.io-Verbindung für Steuerbefehle
@@ -2633,7 +2647,11 @@
     drawZones();       // Sperrzonen / virtuelle Waende (wie HA)
     drawFurniture();   // Moebel (HA-Bilder)
     drawCurtains();    // Vorhaenge (Zickzack)
-    // gefahrene Spur (unter Labels/Marker)
+    // gefahrene Spur (unter Labels/Marker). Zuerst die Wischspur, damit die duenne
+    // Saugspur darauf liegt — bei "saugen und wischen" gehoert der Abschnitt in beide.
+    baueSpurMaske();
+    mopEl=document.createElementNS(NS,'path'); mopEl.setAttribute('class','mopspur');
+    mopEl.setAttribute('mask','url(#spurmaske)'); ov.appendChild(mopEl);
     trailEl=document.createElementNS(NS,'path'); trailEl.setAttribute('class','trail'); ov.appendChild(trailEl);
     renderTrail();
     // Raummarke: eine Gruppe je Raum, darin Name und (bei Auswahl) das Badge. Die Gruppe
@@ -2930,10 +2948,12 @@
   async function rebuild(cloudStr){
     await decode(cloudStr);
     for (const id of [...selectedRooms]) if (!rooms[id]) selectedRooms.delete(id); // weggefallene Räume abwählen
-    // Fahrspur: bevorzugt die im Adapter aufgesammelte Spur (trpts = [x,y,breakFlag]),
-    // sonst das rohe tr-Stück der aktuellen Karte.
+    // Fahrspur: bevorzugt die im Adapter aufgesammelte Spur, sonst das rohe tr-Stueck der
+    // aktuellen Karte. trpts = [x, y, typ] mit 0=L, 1=S, 2=W, 3=M (mapMerge.js).
+    // Aeltere Adapter liefern dort nur 0/1 — dann fehlt die Wischspur, aber die Saugspur
+    // stimmt weiterhin, weil 1 auf 'S' abgebildet wird.
     const newTrail = Array.isArray(META.trpts)
-      ? META.trpts.map(a => ({ x:a[0], y:a[1], operator: a[2] ? 'S' : 'L' }))
+      ? META.trpts.map(a => ({ x:a[0], y:a[1], operator: TRPT_OP[a[2]] || 'L' }))
       : decodeTr(META.tr);
     drawFills(); buildOverlay(); buildRoomList(); setupZoom(); updateLabels(); updateCleanPanel();
     // Gemeldeten Blickwinkel weiterschieben: der bisherige wird zum Start der Animation,
@@ -2967,6 +2987,47 @@
   }
   const isBreak = op => op==='S'||op==='M'||op==='W'; // absoluter Neustart = Umsetzfahrt
 
+  /**
+   * Maske fuer die Wischspur. Die ist rund zehnmal so breit wie die Saugspur und wuerde
+   * ohne Beschnitt ueber Waende und Moebel hinausquellen. HA stanzt sie deshalb auf die
+   * Kartenflaeche (map.py 9224 und 10798-10812):
+   *     if self._has_mask and px_type <= 100: mask[y, x] = mask_color
+   * — innerhalb von `if px_type != 0`, das Aussenherum bleibt also frei. Typen ueber 100
+   * (Wand 255, Boden 254, frisch gescannt 253) gehoeren NICHT dazu: gewischt wird nur in
+   * zugeordneten Raeumen.
+   * Umgesetzt als SVG-Maske mit einem Bild in Zellenaufloesung — dieselbe Groesse, in der
+   * die Karte ohnehin gezeichnet wird, und im selben Koordinatensystem wie die Spur.
+   */
+  function baueSpurMaske(){
+    const c=document.createElement('canvas'); c.width=W; c.height=He;
+    const g=c.getContext('2d');
+    const bild=g.createImageData(W,He);
+    for (let y=0;y<He;y++) for (let x=0;x<W;x++){
+      const t=raw[mapStart+y*W+x];
+      if (t===0 || t>100) continue;                 // aussen bzw. Wand/Boden -> nicht wischbar
+      if (isRoom(t) && hidden.has(t)) continue;     // ausgeblendeter Raum: auch keine Spur
+      const di=((He-1-y)*W + x)*4;                  // Y gespiegelt wie in drawFills
+      bild.data[di]=255; bild.data[di+1]=255; bild.data[di+2]=255; bild.data[di+3]=255;
+    }
+    g.putImageData(bild,0,0);
+    let defs=ov.querySelector('defs');
+    if(!defs){ defs=document.createElementNS(NS,'defs'); ov.insertBefore(defs, ov.firstChild); }
+    let m=defs.querySelector('#spurmaske');
+    if(!m){
+      m=document.createElementNS(NS,'mask'); m.setAttribute('id','spurmaske');
+      m.setAttribute('maskUnits','userSpaceOnUse');
+      defs.appendChild(m);
+    }
+    m.innerHTML='';
+    const im=document.createElementNS(NS,'image');
+    im.setAttribute('x',0); im.setAttribute('y',0);
+    im.setAttribute('width',W); im.setAttribute('height',He);
+    // Harte Kanten wie bei der Karte selbst, sonst franst der Rand der Wischspur aus.
+    im.setAttribute('image-rendering','pixelated');
+    im.setAttribute('href', c.toDataURL());
+    m.appendChild(im);
+  }
+
   // ===== Abspielkopf (🎨 bewusste Abweichung von HA) =====
   // HA zeichnet je Frame ein PNG: Roboter springt, Spur ist sofort komplett da.
   // Wir spielen die neu hinzugekommenen Spurpunkte als Fahrstrecke ab:
@@ -2979,7 +3040,19 @@
   let headDist=0;        // aktuelle Position des Kopfes auf dieser Strecke
   let animFrom=0, animTo=0, animT0=0, animDur=3000, animReq=null;
   let lastDataTs=0, frameGap=3000;  // gemessener Abstand der Kartenpakete (gleitend)
-  let staticD='', staticIdx=0;      // fertig gezeichneter Teil (nur bei neuen Daten gebaut)
+  let staticSaug='', staticWisch='', staticIdx=0; // fertig gezeichnete Teile (nur bei neuen Daten gebaut)
+  // Abschnittstyp je Punkt: S/W/M des Bruchs, der diesen Teilpfad begonnen hat. HA haelt
+  // denselben Wert in einer Variablen mit, die bis zum naechsten Nicht-L-Punkt stehen
+  // bleibt (map.py 10765-10790) — ein 'L' erbt also den Typ seines Abschnitts.
+  let sektTyp=[];
+  function baueSektTyp(pts){
+    const out=new Array(pts.length); let akt='S';
+    for(let i=0;i<pts.length;i++){
+      if(isBreak(pts[i].operator)) akt=pts[i].operator;
+      out[i]=akt;
+    }
+    return out;
+  }
   // Vom GERAET gemeldeter Blickwinkel: der des vorigen Pakets (Start der Animation) und der
   // des aktuellen (Ziel). Der gemeldete Winkel gilt fuer den Zeitpunkt des Pakets, also fuer
   // das ENDE der Fahrt — deshalb wird er wie die Position interpoliert, statt sofort zu
@@ -3059,10 +3132,14 @@
     }
     return { p:trailPts[trailPts.length-1], idx:trailPts.length-1, angle:null, onBreak:false };
   }
-  // Pfad-String fuer Punkte [0..idx]; Spurbrueche beginnen einen neuen Teilpfad
-  function pathStr(upto){
+  // Pfad-String fuer Punkte [0..idx]; Spurbrueche beginnen einen neuen Teilpfad.
+  // gehoert() waehlt aus, welche Abschnitte hineinkommen (Saug- oder Wischspur). Wird ein
+  // Abschnitt uebersprungen, muss der naechste aufgenommene wieder mit 'M' anfangen —
+  // sonst zieht die Linie quer ueber die ausgelassene Strecke.
+  function pathStr(upto, gehoert){
     let d='', started=false;
     for(let i=0;i<=upto && i<trailPts.length;i++){
+      if(!gehoert(sektTyp[i])){ started=false; continue; }
       const [sx,sy]=wS(trailPts[i].x,trailPts[i].y);
       if(!started || isBreak(trailPts[i].operator)){ d+='M'+sx.toFixed(1)+' '+sy.toFixed(1)+' '; started=true; }
       else d+='L'+sx.toFixed(1)+' '+sy.toFixed(1)+' ';
@@ -3072,21 +3149,29 @@
 
   function renderTrail(){ if(!trailEl) return;
     // Sichtbar ist nur die Strecke bis zum Abspielkopf.
+    // Zwei Spuren wie HA (map.py 10756-10842): die duenne Saugspur aus den Abschnitten
+    // S und W, die breite halbtransparente Wischspur aus M und W.
     const head=posAt(headDist);
-    let d=staticD;
-    if(head){
+    const bau=(start, gehoert)=>{
+      let d=start, offen=!!start;
+      if(!head) return d;
       for(let i=staticIdx+1; i<trailPts.length && cum[i]<=headDist; i++){
+        if(!gehoert(sektTyp[i])){ offen=false; continue; }
         const [sx,sy]=wS(trailPts[i].x,trailPts[i].y);
-        d += (noLine(trailPts[i]) ? 'M' : 'L') + sx.toFixed(1)+' '+sy.toFixed(1)+' ';
+        d += (!offen || noLine(trailPts[i]) ? 'M' : 'L') + sx.toFixed(1)+' '+sy.toFixed(1)+' ';
+        offen=true;
       }
       // Faehrt der Kopf gerade eine Umsetzfahrt ab, endet die Spur beim letzten echten
       // Punkt — der Roboter bewegt sich sichtbar weiter, hinterlaesst aber keine Linie.
-      if(!head.onBreak){
+      // Der Kopf gehoert zum Abschnitt, in dem er steckt (head.idx).
+      if(!head.onBreak && gehoert(sektTyp[head.idx] || 'S')){
         const [hx,hy]=wS(head.p.x, head.p.y);
-        if(d) d += 'L'+hx.toFixed(1)+' '+hy.toFixed(1)+' '; else d='M'+hx.toFixed(1)+' '+hy.toFixed(1)+' ';
+        d += (offen ? 'L' : 'M') + hx.toFixed(1)+' '+hy.toFixed(1)+' ';
       }
-    }
-    trailEl.setAttribute('d', d.trim());
+      return d;
+    };
+    trailEl.setAttribute('d', bau(staticSaug, istSaugSpur).trim());
+    if (mopEl) mopEl.setAttribute('d', bau(staticWisch, istWischSpur).trim());
   }
 
   /**
@@ -3106,7 +3191,7 @@
     // dann eben auf der neuen Geometrie, die ohnehin zur selben Roboterposition fuehrt.
     if(c===0 && old.length) headDist=0;               // komplett neue Spur (neuer Auftrag)
     else headDist=Math.min(headDist, newCum.length?newCum[newCum.length-1]:0);
-    trailPts=nw; cum=newCum;
+    trailPts=nw; cum=newCum; sektTyp=baueSektTyp(nw);
     // Nicht abfahren, sondern sofort ans Ende springen, wenn die Strecke unplausibel lang
     // ist. Zwei Faelle: (1) erstes Paket nach dem Laden/Neustart — da kommt die KOMPLETTE
     // bisherige Spur, der Roboter wuerde sonst einmal quer durch die Wohnung rasen;
@@ -3116,7 +3201,8 @@
     if(!old.length || totalDist()-headDist > MAX_DRIVE) headDist=totalDist();
     // fertigen Teil bis zum Kopf einfrieren, damit pro Bild nur das kurze Endstueck neu entsteht
     staticIdx=0; while(staticIdx+1<trailPts.length && cum[staticIdx+1]<=headDist) staticIdx++;
-    staticD=pathStr(staticIdx);
+    staticSaug=pathStr(staticIdx, istSaugSpur);
+    staticWisch=pathStr(staticIdx, istWischSpur);
     // Dauer = gemessener Abstand der Kartenpakete (gedeckelt), damit der Kopf genau dann
     // ankommt, wenn das naechste Paket eintrifft.
     const now=performance.now();

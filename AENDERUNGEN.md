@@ -95,6 +95,13 @@ Nummer aussieht. Bei neueren Geräten muss dort aber überall eine 1 stehen — 
 Wert bringt den Ablauf durcheinander. Betrifft auch das Original; als Fehlerbericht
 formuliert.)*
 
+### Saug- und Wischwege sind auf der Karte zu unterscheiden
+**Vorher:** Die gefahrene Spur war überall eine gleich dünne Linie — ob der Roboter an
+einer Stelle gesaugt oder gewischt hat, war nicht zu sehen.
+**Jetzt:** Wie in der App und in Home Assistant: Gesaugte Strecken sind eine dünne Linie,
+gewischte ein breiter, halbdurchsichtiger Balken. Wo beides gemacht wurde, liegt die dünne
+Linie auf dem Balken. Der Balken endet an den Raumgrenzen, statt über Wände zu laufen.
+
 ### Die Route lässt sich einstellen
 **Vorher:** Die Route aus der App (Schnell, Standard, Intensiv, Tief) gab es im Widget
 nicht — man musste dafür in die App wechseln.
