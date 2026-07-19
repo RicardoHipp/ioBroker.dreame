@@ -300,8 +300,12 @@
   .kopfstatus .ssub .ico{vertical-align:-3px;margin-right:3px}
   /* Ueberschrift eines Abschnitts mit rechtsbuendigem Zusatz ("Raum antippen zum Wählen",
      "Statistik"). Nutzt Platz, der sonst leer bliebe. */
-  .abschnitt{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  /* flex-wrap + flex:none am Zusatz: passt er neben die Ueberschrift, steht er dort;
+     wird es zu eng, rutscht er komplett in die naechste Zeile. Ohne das schrumpfte er
+     und wurde mit "…" abgeschnitten — in der schmalen Spalte schon nach drei Woertern. */
+  .abschnitt{display:flex;align-items:baseline;gap:4px 10px;margin-bottom:10px;flex-wrap:wrap}
   .abschnitt h2{margin:0;flex:1}
+  .abschnitt > :not(h2){flex:none}
   /* Die vier Auswahlkarten. Alle gleich aufgebaut, damit sie als eine Gruppe lesbar sind:
      Beschriftung oben klein, Wert darunter fett, Pfeil rechts. */
   /* Grundform (schmale Spalte): Reinigung und Modus je ueber die volle Breite — ihre Werte
@@ -362,8 +366,7 @@
   .gruppe + .gruppe{margin-top:18px}
   .untenrum{margin-top:18px}
   .untenrum .gruppe + .gruppe{margin-top:18px}
-  .selroom{font-weight:700;font-size:12px;color:var(--accent,#4a78e0);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .selroom{font-weight:700;font-size:12px;color:var(--accent,#4a78e0);white-space:nowrap}
   /* Auswahl-Zeile: tippt man drauf, oeffnet sich ein Overlay mit den Optionen.
      Touch-freundlich (grosses Tap-Ziel) und platzsparend; dasselbe Muster soll spaeter
      auch fuer die Einstellungen je Raum dienen. */
