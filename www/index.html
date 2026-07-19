@@ -34,7 +34,7 @@
     --ui:1;
     /* Groesse der Bedienleiste. Zwei Werte, weil sie nicht dasselbe meinen: senkrecht
        zaehlt die Breite, waagerecht die Hoehe. Beide werden mit --ui multipliziert. */
-    --leiste-breite:275px; --leiste-hoehe:158px;
+    --leiste-breite:275px; --leiste-hoehe:230px;
   }
   :root[data-farben="hell"]{
     --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
@@ -86,8 +86,6 @@
   .maptag.links{left:10px; color:var(--txt); font-weight:700}
   .maptag.rechts{right:10px}
   /* Ueberschrift der Bedienspalte mit dem Zahnrad rechts daneben */
-  .sidehead{display:flex; align-items:center; gap:8px; margin-bottom:12px; position:relative}
-  .sidehead h2{margin:0; flex:1}
   /* Zahnrad. Das Menue dahinter ist ein normaler Dialog (#gearOvl), kein Ausklappmenue —
      dadurch gibt es im Widget nur ein Muster fuer Dialoge, und nichts kann von der
      rollenden Spalte abgeschnitten werden. */
@@ -194,17 +192,29 @@
   /* KEINE Hoehenangabe hier: .sidein ist gezoomt, eine Prozenthoehe wuerde ein zweites
      Mal mit --ui multipliziert (derselbe Fehler wie frueher bei der Spalte). Die Hoehe
      kommt vom Inhalt, begrenzt wird sie von .side. */
+  /* Waagerecht in zwei Ebenen: oben die Kopfzeile ueber die volle Breite, darunter
+     Reinigung und Verbrauchsmaterial nebeneinander. */
   :root[data-leiste="oben"] .sidein,
   :root[data-leiste="unten"] .sidein{
-    display:flex; align-items:flex-start; gap:18px; padding:12px 16px}
-  :root[data-leiste="oben"] .gruppe,
-  :root[data-leiste="unten"] .gruppe{margin-top:0; flex:none; width:230px}
-  :root[data-leiste="oben"] .g-steuer,
-  :root[data-leiste="unten"] .g-steuer{width:190px}
-  /* Ueberschrift und Zahnrad der ersten Gruppe: waagerecht steht das Zahnrad sonst weit
-     rechts vom Text, weil die Gruppe schmaler ist als die Spalte. */
-  :root[data-leiste="oben"] .sidehead,
-  :root[data-leiste="unten"] .sidehead{margin-bottom:8px}
+    display:flex; flex-direction:column; padding:12px 16px}
+  :root[data-leiste="oben"] .g-kopf,
+  :root[data-leiste="unten"] .g-kopf{
+    padding-bottom:12px; border-bottom:1px solid var(--line)}
+  :root[data-leiste="oben"] .untenrum,
+  :root[data-leiste="unten"] .untenrum{
+    display:flex; align-items:flex-start; gap:26px; margin-top:12px}
+  :root[data-leiste="oben"] .untenrum .gruppe,
+  :root[data-leiste="unten"] .untenrum .gruppe{margin-top:0}
+  :root[data-leiste="oben"] .g-wahl,
+  :root[data-leiste="unten"] .g-wahl{flex:none; width:400px}
+  :root[data-leiste="oben"] .g-verbrauch,
+  :root[data-leiste="unten"] .g-verbrauch{flex:1; min-width:260px}
+  /* Der Zustandstext darf sich die freie Breite nehmen, die Meldungen sitzen in der
+     Mitte, die Aktionen ganz rechts (margin-left:auto an .actbtns). */
+  :root[data-leiste="oben"] .kopfstatus,
+  :root[data-leiste="unten"] .kopfstatus{flex:none; max-width:34%}
+  :root[data-leiste="oben"] .warnbox,
+  :root[data-leiste="unten"] .warnbox{flex:1; min-width:0}
   /* Schmal (Handy): Karte oben, Bedienung darunter — dann darf die Seite rollen, statt
      alles in die Fensterhoehe zu quetschen. */
   @media (max-width:720px){
@@ -221,9 +231,11 @@
       width:auto; height:auto; overflow:visible;
       border:none; border-top:1px solid var(--trennlinie, var(--line))}
     :root[data-leiste] .sidein{display:block; height:auto; padding:16px}
-    :root[data-leiste] .gruppe{width:auto}
+    :root[data-leiste] .untenrum{display:block; margin-top:18px}
+    :root[data-leiste] .gruppe{width:auto; min-width:0}
     :root[data-leiste] .gruppe + .gruppe{margin-top:18px}
-    :root[data-leiste] .gruppe + .g-steuer{margin-top:10px}
+    :root[data-leiste] .g-kopf{border-bottom:none; padding-bottom:0}
+    :root[data-leiste] .kopfstatus{max-width:none}
   }
   .side h2{font-size:11px;text-transform:uppercase;letter-spacing:1px;
     color:var(--muted);margin:0 0 12px}
@@ -248,15 +260,39 @@
   .rrow.off .sw{filter:grayscale(1)}
   .rrow.sel{background:var(--panel);box-shadow:inset 0 0 0 2px var(--accent,#4a78e0)}
   .rrow.sel span:last-child{font-weight:800}
-  .statusbox{background:var(--panel);border:1px solid var(--line);border-radius:10px;
-    padding:10px 12px;margin-bottom:10px}
-  .statusbox .stext{font-size:15px;font-weight:800}
-  .statusbox .ssub{font-size:12px;opacity:.75;margin-top:3px}
-  .statusbox .ssub .ico{vertical-align:-3px;margin-right:3px}
+  /* ===== Kopfzeile: Zahnrad, Zustand, Meldungen, Aktionen ===== */
+  .g-kopf{display:flex; align-items:center; gap:14px}
+  .kopfstatus{min-width:0}
+  .kopfstatus .stext{font-size:16px;font-weight:800;line-height:1.2;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kopfstatus .ssub{font-size:12px;opacity:.75;margin-top:3px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kopfstatus .ssub .ico{vertical-align:-3px;margin-right:3px}
+  /* Ueberschrift eines Abschnitts mit rechtsbuendigem Zusatz ("Raum antippen zum Wählen",
+     "Statistik"). Nutzt Platz, der sonst leer bliebe. */
+  .abschnitt{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .abschnitt h2{margin:0;flex:1}
+  /* Die vier Auswahlkarten. Alle gleich aufgebaut, damit sie als eine Gruppe lesbar sind:
+     Beschriftung oben klein, Wert darunter fett, Pfeil rechts. */
+  .wraster{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .wkarte{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:3px;
+    padding:9px 26px 9px 12px;border-radius:10px;border:1.5px solid var(--line);
+    background:var(--panel);color:var(--txt);font:inherit;text-align:left;
+    cursor:pointer;user-select:none;transition:.12s}
+  .wkarte:hover:not(:disabled){border-color:var(--accent,#4a78e0)}
+  .wkarte:active:not(:disabled){transform:scale(.98)}
+  .wkarte .wk{font-size:11.5px;opacity:.7;display:flex;align-items:center;gap:5px}
+  .wkarte .wv{font-size:13.5px;font-weight:800;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .wkarte .chev{position:absolute;right:8px;top:50%;transform:translateY(-50%);
+    opacity:.5;color:var(--accent,#4a78e0)}
+  /* Gesperrt = der eingestellte Modus nutzt den Wert gar nicht (z. B. Wasser beim
+     reinen Saugen). Sichtbar bleiben, damit klar ist, dass es ihn gibt. */
+  .wkarte:disabled{opacity:.4;cursor:not-allowed}
   /* Meldungen (volle Tanks, Fehler ...). Der Kasten ist leer und ausgeblendet, solange
      nichts anliegt — keine Liste gruener Haken, die man erst lesen muss. */
   .warnbox{background:var(--panel);border:1px solid var(--warn,#e0a33a);border-radius:10px;
-    padding:8px 10px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px}
+    padding:8px 10px;display:flex;flex-direction:column;gap:6px}
   .warnbox .wrow{display:flex;align-items:center;gap:8px;font-size:12.5px;line-height:1.35}
   .warnbox .wrow .ico{flex:none;color:var(--warn,#e0a33a)}
   .warnbox .wrow.bad .ico{color:var(--bad,#ff5c7a)}
@@ -270,46 +306,22 @@
   .vrow.warn .vbar i{background:var(--warn,#e0a33a)}
   .vrow.bad  .vbar i{background:var(--bad,#ff5c7a)}
   .vpct{flex:none;width:34px;text-align:right;font-variant-numeric:tabular-nums;opacity:.8}
-  /* Statistik: hinter einem Knopf statt aufklappbar. Aufgeklappt schob sie in der Spalte
-     alles nach unten, und in der waagerechten Leiste haette sie eine eigene Spalte
-     gebraucht — als Knopf passt sie unter die Aktionsknoepfe. */
-  /* Sieht aus wie eine Auswahlzeile, weil er dasselbe tut: antippen oeffnet einen Dialog.
-     Gleiche Masse, gleicher Rahmen, gleiche Schriftgroessen — nur ohne Wert rechts. */
-  .statsbtn{width:100%;margin-top:12px;
-    display:flex;align-items:center;justify-content:space-between;gap:10px;
-    padding:11px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);
-    color:var(--txt);font:inherit;font-size:12px;cursor:pointer;user-select:none;transition:.12s}
-  .statsbtn:hover{border-color:var(--accent,#4a78e0)}
-  .statsbtn .stbeschriftung{flex:1;text-align:left;opacity:.75}
-  .statsbtn .chev{opacity:.6;color:var(--accent,#4a78e0)}
-  .statsbtn .ico:first-child{opacity:.75}
+  /* Statistik als unaufdringlicher Verweis in der Abschnitts-Ueberschrift statt als
+     eigener Knopf — so kostet sie keine Zeile Hoehe. */
+  .statsbtn{background:none;border:none;padding:0;cursor:pointer;font:inherit;font-size:12px;
+    font-weight:700;color:var(--accent,#4a78e0);display:flex;align-items:center;gap:3px}
+  .statsbtn:hover{text-decoration:underline}
+  .statsbtn .chev{opacity:.7}
   .statlist{display:flex;flex-direction:column;gap:5px;margin-top:8px;font-size:12.5px}
   .statlist div{display:flex;justify-content:space-between;gap:10px}
   .statlist span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
-  /* Saugstärke + Wassermenge als zwei schmale Kacheln nebeneinander. Ersetzt zwei
-     volle Reglerzeilen — spart Höhe, ohne die Werte zu verstecken. */
-  .werte{display:flex; gap:8px}
-  .wert{flex:1; display:flex; align-items:center; justify-content:center; gap:7px;
-    padding:9px 6px; border-radius:11px; cursor:pointer; transition:.12s;
-    border:1.5px solid var(--line); background:var(--panel2); color:var(--txt);
-    font:inherit; font-size:13px; font-weight:700}
-  .wert:hover:not(:disabled){border-color:var(--accent)}
-  .wert:active:not(:disabled){transform:scale(.97)}
-  .wert .ico{flex:none; opacity:.85}
-  .wert .wv{font-variant-numeric:tabular-nums; white-space:nowrap}
-  /* Gesperrt = der eingestellte Modus nutzt den Wert gar nicht (z. B. Wasser beim
-     reinen Saugen). Sichtbar bleiben, damit klar ist, dass es ihn gibt. */
-  .wert:disabled{opacity:.4; cursor:not-allowed}
-  .clean{display:flex;flex-direction:column;gap:10px}
   /* Abstand zwischen den Gruppen. Der Wert von 10 px zwischen Auswahl und Steuerung
      bildet den frueheren Zustand nach, als beide noch in einem Block mit gap:10 lagen. */
   .gruppe + .gruppe{margin-top:18px}
-  .gruppe + .g-steuer{margin-top:10px}
-  /* Wertekacheln, Aktionsknoepfe und der Statistik-Knopf klebten aneinander: sie waren
-     schlichte Nachbarn ohne Abstand. Derselbe Abstand wie zwischen den Auswahlzeilen. */
-  .g-steuer{display:flex; flex-direction:column; gap:10px}
-  .g-steuer .statsbtn{margin-top:0}
-  .selroom{font-weight:800;font-size:14px;color:var(--accent,#4a78e0)}
+  .untenrum{margin-top:18px}
+  .untenrum .gruppe + .gruppe{margin-top:18px}
+  .selroom{font-weight:700;font-size:12px;color:var(--accent,#4a78e0);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* Auswahl-Zeile: tippt man drauf, oeffnet sich ein Overlay mit den Optionen.
      Touch-freundlich (grosses Tap-Ziel) und platzsparend; dasselbe Muster soll spaeter
      auch fuer die Einstellungen je Raum dienen. */
@@ -366,13 +378,16 @@
   input[type=range]::-moz-range-progress{height:10px;border-radius:99px;background:var(--accent)}
   input[type=range]::-moz-range-thumb{width:28px;height:28px;border-radius:50%;
     background:var(--accent);border:3px solid var(--panel);box-shadow:0 1px 5px rgba(0,0,0,.45)}
-  .actbtns{display:flex;gap:8px}
-  /* Nur Symbol, kein Text — Bedeutung ueber title/aria-label. 44px Hoehe, damit der
-     Knopf am Tablet sicher mit dem Finger zu treffen ist. */
-  .abtn{flex:1;min-width:0;height:44px;border-radius:9px;border:none;
+  .actbtns{display:flex;gap:8px;flex:none;margin-left:auto}
+  /* 44px Hoehe, damit der Knopf am Tablet sicher mit dem Finger zu treffen ist.
+     Start traegt als einziger eine Beschriftung und ist breiter: er ist die Aktion, die
+     man fast immer will — Stopp und Home sind Ausnahmen und kommen mit dem Symbol aus. */
+  .abtn{flex:none;min-width:44px;height:44px;border-radius:9px;border:none;gap:7px;
+    padding:0 12px;font:inherit;font-size:13.5px;font-weight:700;
     cursor:pointer;color:#fff;transition:transform .08s,opacity .12s,filter .12s;opacity:.92;
     display:inline-flex;align-items:center;justify-content:center;
     -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+  .abtn:not(.start){padding:0}
   /* Sichtbare Rueckmeldung beim Druecken: am Tablet gibt es sonst gar keine — man weiss
      nicht, ob der Tipp angekommen ist, und tippt ein zweites Mal. */
   .abtn:active{transform:scale(.93);filter:brightness(.85);opacity:1}
@@ -408,64 +423,63 @@
            sie nebeneinander. Ohne diese Klammern liesse sich der flache Elementstrom
            nicht spaltenweise anordnen. -->
       <div class="side"><div class="sidein">
-        <section class="gruppe g-wahl">
-          <div class="sidehead">
-            <h2>Reinigung</h2>
-            <button class="gear" id="gearBtn" title="Einstellungen" aria-label="Einstellungen"></button>
-          </div>
-          <div class="clean">
-            <div class="selroom" id="selRoomName">Raum antippen zum Wählen</div>
-            <div class="pickrow" id="custRow">
-              <span class="pk">Reinigung</span>
-              <span class="pv"><span id="custVal">Einheitlich</span></span>
-            </div>
-            <div id="globalOpts">
-              <div class="pickrow" id="modeRow">
-                <span class="pk">Modus</span>
-                <span class="pv"><span id="modeVal">Saugen</span></span>
-              </div>
-            </div>
-            <div class="slabel" id="indivHint" style="display:none;opacity:.7">
-              Jeder Raum wird nach seinen gespeicherten Einstellungen gereinigt — am Raum in der Karte ändern.
-            </div>
-          </div>
-        </section>
-        <section class="gruppe g-steuer">
-          <!-- Saugstärke und Wassermenge nur als Anzeige, beide in einer Zeile. Antippen
-               öffnet den Regler im Overlay; was der Modus gar nicht nutzt, ist gesperrt. -->
-          <div id="globalSliders" class="werte">
-            <button class="wert" id="suctionTile" type="button">
-              <span class="wv" id="suctionVal">2</span>
-            </button>
-            <button class="wert" id="waterTile" type="button">
-              <span class="wv" id="waterVal">3</span>
-            </button>
-          </div>
-          <div class="actbtns">
-            <button class="abtn start" id="c-start" title="Start" aria-label="Reinigung starten"></button>
-            <button class="abtn stop" id="c-stop" title="Stop" aria-label="Reinigung anhalten"></button>
-            <button class="abtn home" id="c-home" title="Home" aria-label="Zurück zur Ladestation"></button>
-          </div>
-        </section>
-        <section class="gruppe g-status">
-          <h2>Status</h2>
-          <div class="statusbox">
+        <!-- Kopfzeile: Zahnrad, Zustand, Meldungen, Aktionen. Waagerecht laeuft sie ueber
+             die volle Breite, senkrecht steht sie oben in der Spalte. -->
+        <section class="gruppe g-kopf">
+          <button class="gear" id="gearBtn" title="Einstellungen" aria-label="Einstellungen"></button>
+          <div class="kopfstatus">
             <div class="stext" id="stateText">–</div>
             <div class="ssub" id="stateSub">–</div>
           </div>
           <!-- Meldungen: nur sichtbar, wenn wirklich etwas anliegt (s. updateInfo) -->
           <div class="warnbox" id="warnBox" hidden></div>
-          <div id="err"></div>
+          <div class="actbtns">
+            <button class="abtn start" id="c-start" title="Start" aria-label="Reinigung starten">
+              <span class="abtext">Start</span>
+            </button>
+            <button class="abtn stop" id="c-stop" title="Stop" aria-label="Reinigung anhalten"></button>
+            <button class="abtn home" id="c-home" title="Home" aria-label="Zurück zur Ladestation"></button>
+          </div>
         </section>
-        <section class="gruppe g-verbrauch">
-          <h2 id="verbrauchTitel" hidden>Verbrauchsmaterial</h2>
-          <div class="verbrauch" id="verbrauch"></div>
-          <!-- Wird bei waagerechter Leiste nach unten zu den Aktionsknoepfen verschoben
-               (s. setzeAussehen) — dort ist Platz, und es spart eine ganze Spalte. -->
-          <button class="statsbtn" id="statsBtn" type="button" hidden>
-            <span class="stbeschriftung">Statistik</span>
-          </button>
-        </section>
+        <div class="untenrum">
+          <section class="gruppe g-wahl">
+            <div class="abschnitt">
+              <h2>Reinigung</h2>
+              <span class="selroom" id="selRoomName">Raum antippen zum Wählen</span>
+            </div>
+            <!-- Alle vier gleich aufgebaut: Beschriftung oben, Wert darunter, Pfeil rechts.
+                 Antippen oeffnet jeweils einen Dialog. -->
+            <div class="wraster">
+              <button class="wkarte" id="custRow" type="button">
+                <span class="wk">Reinigung</span>
+                <span class="wv" id="custVal">Einheitlich</span>
+              </button>
+              <button class="wkarte" id="modeRow" type="button">
+                <span class="wk">Modus</span>
+                <span class="wv" id="modeVal">Saugen</span>
+              </button>
+              <button class="wkarte" id="suctionTile" type="button">
+                <span class="wk">Saugstufe</span>
+                <span class="wv" id="suctionVal">2</span>
+              </button>
+              <button class="wkarte" id="waterTile" type="button">
+                <span class="wk">Wassermenge</span>
+                <span class="wv" id="waterVal">3</span>
+              </button>
+            </div>
+            <div class="slabel" id="indivHint" style="display:none;opacity:.7">
+              Jeder Raum wird nach seinen gespeicherten Einstellungen gereinigt — am Raum in der Karte ändern.
+            </div>
+          </section>
+          <section class="gruppe g-verbrauch">
+            <div class="abschnitt">
+              <h2 id="verbrauchTitel" hidden>Verbrauchsmaterial</h2>
+              <button class="statsbtn" id="statsBtn" type="button" hidden>Statistik</button>
+            </div>
+            <div class="verbrauch" id="verbrauch"></div>
+            <div id="err"></div>
+          </section>
+        </div>
       </div></div>
     </div>
   </div>
@@ -637,7 +651,7 @@
   // Umschalten der Lage jedes Mal einen unsinnigen Wert erben.
   const LG = {
     breite: { min:220, max:450, standard:275, titel:'Breite der Bedienung', css:'--leiste-breite' },
-    hoehe:  { min:120, max:320, standard:158, titel:'Höhe der Bedienung',   css:'--leiste-hoehe' },
+    hoehe:  { min:150, max:360, standard:230, titel:'Höhe der Bedienung',   css:'--leiste-hoehe' },
   };
   const holeZahl = (name, min, max, standard) => {
     const a = parseInt(_par.get(name), 10);
@@ -690,10 +704,6 @@
     // das spart der Leiste eine ganze Spalte. Senkrecht bleibt er beim Verbrauchsmaterial,
     // wo er thematisch hingehoert. Ein Umhaengen per CSS gibt es nicht, die beiden Ziele
     // liegen in verschiedenen Gruppen.
-    const sBtn = document.getElementById('statsBtn');
-    const waagerecht = (leisteWahl === 'oben' || leisteWahl === 'unten');
-    const ziel = document.querySelector(waagerecht ? '.g-steuer' : '.g-verbrauch');
-    if (sBtn && ziel && sBtn.parentElement !== ziel) ziel.appendChild(sBtn);
     // Der Groessenregler meint je nach Lage etwas anderes — Beschriftung und Bereich
     // umstellen, ohne den Wert zu aendern.
     setzeLeistenGroesse(null, false);
@@ -1231,18 +1241,21 @@
     // Sperren, was der eingestellte Modus gar nicht nutzt: beim reinen Saugen gibt es
     // keine Wassermenge, beim reinen Wischen keine Saugstaerke. Ohne Auswahl ist beides
     // gesperrt, weil der Wert dann fuer niemanden gelten wuerde.
+    // Im Individuell-Betrieb gelten die globalen Werte ohnehin nicht (das Geraet nimmt
+    // dann das, was am Raum gespeichert ist) — dann sind alle drei gesperrt.
     const st=document.getElementById('suctionTile'), wt=document.getElementById('waterTile');
-    if (st) st.disabled = !gewaehlt.length || !modeSaugt(cleanMode);
-    if (wt) wt.disabled = !gewaehlt.length || !modeWischt(cleanMode);
+    if (st) st.disabled = customizedCleaning || !gewaehlt.length || !modeSaugt(cleanMode);
+    if (wt) wt.disabled = customizedCleaning || !gewaehlt.length || !modeWischt(cleanMode);
 
     // Betriebsart: entweder globale Regler ODER die Werte je Raum — nie beides,
     // denn im Individuell-Betrieb ignoriert das Geraet die globalen Werte.
     const cv=document.getElementById('custVal');
     if (cv) cv.textContent = customizedCleaning ? 'Individuell pro Raum' : 'Einheitlich';
-    const go=document.getElementById('globalOpts'), gs=document.getElementById('globalSliders'),
-          ih=document.getElementById('indivHint');
-    if (go) go.style.display = customizedCleaning ? 'none' : '';
-    if (gs) gs.style.display = customizedCleaning ? 'none' : '';
+    // Der Modus gilt im Individuell-Betrieb ebenfalls nicht. Gesperrt statt ausgeblendet,
+    // sonst springt das Raster in der Groesse. (Saugstufe und Wassermenge weiter oben.)
+    const ih=document.getElementById('indivHint');
+    const mr=document.getElementById('modeRow');
+    if (mr) mr.disabled = customizedCleaning;
     if (ih) ih.style.display = customizedCleaning ? '' : 'none';
     // Die Badges zeigen dieselben Werte — hier und nicht in updateLabels(), weil sich der
     // Inhalt auch OHNE Auswahlwechsel aendert: Modus, Betriebsart, globale Regler, und
@@ -1473,20 +1486,23 @@
     for (const b of document.querySelectorAll('.tgl')){
       b.insertAdjacentHTML('afterbegin', uiIcon('anAn',14,'ic-an') + uiIcon('anAus',14,'ic-aus'));
     }
-    // Pfeil in den festen Auswahlzeilen (die dynamischen bekommen ihn in zeile())
+    // Pfeil in den Auswahlzeilen des Einstellungs-Dialogs
     for (const pv of document.querySelectorAll('.pickrow .pv')){
       pv.insertAdjacentHTML('beforeend', uiIcon('weiter', 16, 'chev'));
     }
-    // Symbol vor dem Wert auf den beiden Kacheln
+    // Pfeil in den vier Auswahlkarten des Bedienfelds
+    for (const k of document.querySelectorAll('.wkarte')){
+      k.insertAdjacentHTML('beforeend', uiIcon('weiter', 15, 'chev'));
+    }
+    // Symbol vor der Beschriftung, wo eines passt
     for (const [id, name] of [['suctionTile','saugen'], ['waterTile','wasser']]){
-      const el = document.getElementById(id);
-      if (el) el.insertAdjacentHTML('afterbegin', uiIcon(name, 16));
+      const el = document.querySelector('#' + id + ' .wk');
+      if (el) el.insertAdjacentHTML('afterbegin', uiIcon(name, 13));
     }
     // Statistik-Kopfzeile: Symbol davor, Klapp-Pfeil dahinter (dreht sich per CSS)
     // Symbol vorn, Pfeil hinten — wie in den Auswahlzeilen
     const sb = document.getElementById('statsBtn');
-    if (sb){ sb.insertAdjacentHTML('afterbegin', uiIcon('statistik',15));
-             sb.insertAdjacentHTML('beforeend', uiIcon('weiter',16,'chev'));
+    if (sb){ sb.insertAdjacentHTML('beforeend', uiIcon('weiter',14,'chev'));
              sb.onclick = openStatistik; }
     const adr = document.querySelector('.adresse summary');
     if (adr) adr.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev'));
@@ -2149,11 +2165,15 @@
     const sym = start ? 'start' : 'pause';
     // Nur bei echtem Wechsel neu zeichnen — sonst ersetzt jede Statusmeldung das SVG,
     // was unruhig aussieht und einen Tipp verschlucken kann.
-    if (sym !== letztesSymbol){
-      b.innerHTML = uiIcon(sym, 20);
+    const wort = start ? (geraetGestartet() ? 'Fortsetzen' : 'Start') : 'Pause';
+    if (sym !== letztesSymbol || b.dataset.wort !== wort){
+      // Als einziger Aktionsknopf traegt Start eine Beschriftung — er ist die Aktion,
+      // die man fast immer will, und das Wort sagt zugleich, was gerade passieren wuerde.
+      b.innerHTML = uiIcon(sym, 18) + `<span class="abtext">${wort}</span>`;
       letztesSymbol = sym;
+      b.dataset.wort = wort;
     }
-    b.title = start ? (geraetGestartet() ? 'Fortsetzen' : 'Start') : 'Pause';
+    b.title = wort;
     b.setAttribute('aria-label', b.title);
     // Nur ohne laufenden Auftrag braucht es eine Raumauswahl; Fortsetzen geht immer.
     b.disabled = start && !geraetGestartet() && selectedRooms.size===0;
