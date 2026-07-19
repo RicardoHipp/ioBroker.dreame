@@ -944,16 +944,22 @@
   // Reinigungsmodus: EINE Auswahl aus vier, genau wie das Geraet es kennt (siid 4, piid 23).
   // Frueher waren es zwei kombinierbare Knoepfe + ein exklusiver, die dann umgerechnet wurden —
   // die vier Werte sind die Realitaet, also direkt so abbilden.
+  // Einheitliche Nummerierung, dieselbe wie in HA und im State remote.cleaning-mode.
+  // Frueher standen hier die Rohwerte 5120-5123. Die trugen zwei Dinge mit sich, die hier
+  // nichts zu suchen haben: die Bit-Verpackung (in denselben Wert sind Selbstreinigung und
+  // Feuchtigkeit eingebaut — die haben wir bei jedem Umstellen ueberschrieben) und die
+  // Geraetebesonderheit, dass bei anhebbarem Wischmopp 0 und 2 vertauscht sind. Beides
+  // gehoert in den Adapter; er rechnet es beim Schreiben hinein.
   const CLEAN_MODES = [
-    { id: 5122, name: 'Saugen',              desc: 'Nur saugen, ohne Wischmopp' },
-    { id: 5121, name: 'Wischen',             desc: 'Nur wischen, ohne zu saugen' },
-    { id: 5120, name: 'Saugen und Wischen',  desc: 'Beides gleichzeitig in einem Durchgang' },
-    { id: 5123, name: 'Wischen nach Saugen', desc: 'Erst alles saugen, danach alles wischen' },
+    { id: 0, name: 'Saugen',              desc: 'Nur saugen, ohne Wischmopp' },
+    { id: 1, name: 'Wischen',             desc: 'Nur wischen, ohne zu saugen' },
+    { id: 2, name: 'Saugen und Wischen',  desc: 'Beides gleichzeitig in einem Durchgang' },
+    { id: 3, name: 'Wischen nach Saugen', desc: 'Erst alles saugen, danach alles wischen' },
   ];
-  let cleanMode = 5122;                       // Vorauswahl: Saugen
+  let cleanMode = 0;                          // Vorauswahl: Saugen
   const modeOf = (id) => CLEAN_MODES.find((m) => m.id === id) || CLEAN_MODES[0];
-  const modeWischt = (id) => id === 5121 || id === 5120 || id === 5123;
-  const modeSaugt  = (id) => id === 5122 || id === 5120 || id === 5123;
+  const modeWischt = (id) => id === 1 || id === 2 || id === 3;
+  const modeSaugt  = (id) => id === 0 || id === 2 || id === 3;
 
   // ===== Raum-Einstellungen (cleanset) =====
   // Pro Raum haelt das GERAET: [Saugstaerke, Wasser/Naesse, Wiederholung, Reihenfolge, Modus, Route].
@@ -1571,8 +1577,14 @@
     const modeRow=document.getElementById('modeRow'), modeVal=document.getElementById('modeVal');
     const applyMode=()=>{ modeVal.textContent = modeOf(cleanMode).name; };
     // updateCleanPanel mit: ob "Wasser X" am Chip steht, haengt vom gewaehlten Modus ab
+    // Sofort ans Geraet, nicht erst beim Start — wie die Zeile "Reinigung" darueber.
+    // Frueher ging der Modus zusammen mit dem Startbefehl raus, im Abstand von
+    // Millisekunden. Der Roboter nahm ihn zwar an, wendete ihn aber nicht mehr auf den
+    // Auftrag an, der im selben Moment begann: er fuhr mit dem alten Modus los und
+    // wechselte erst nach Auftragsende. Zwischen Umstellen und Start liegen jetzt
+    // Sekunden bis Minuten, das reicht.
     modeRow.onclick=()=> openPicker('Reinigungsmodus', CLEAN_MODES, cleanMode,
-      (id)=>{ cleanMode=id; applyMode(); updateCleanPanel(); });
+      (id)=>{ cleanMode=id; cmd('remote.cleaning-mode', id); applyMode(); updateCleanPanel(); });
     // Fuellstand fuer JEDEN Regler mitziehen — auch fuer die erst im Overlay erzeugten,
     // deshalb einmal zentral statt an jedem Regler einzeln.
     document.addEventListener('input',(e)=>{
@@ -1624,26 +1636,17 @@
       if (selectedRooms.size===0) return;
       setzeAnnahme(false);
       takeChangeSnapshot(); // Referenz für den "Änderungen"-Button: Karte beim Start merken
-      // Cleaning mode ROH via customCommand (umgeht den Compound-Blocker, wie dreamehome S4P23E1):
-      // 5120=Saugen&Wischen, 5121=nur Wischen, 5122=nur Saugen, 5123=Wischen nach Saugen
-      // Im Individuell-Betrieb nimmt das Geraet die gespeicherten Werte je Raum und ignoriert
-      // globalen Modus/Saugstaerke/Wasser — dann schicken wir sie erst gar nicht mit.
-      // Frueher standen hier die Werte der beiden Regler (+suction.value / +water.value).
-      // Seit sie durch Kacheln ersetzt sind, gibt es diese Elemente nicht mehr — die Werte
-      // kommen jetzt aus derselben Quelle wie die Anzeige: dem kleinsten Wert der Auswahl.
+      // Hier standen bis zuletzt drei Befehle vor dem Start: Modus, Saugstufe, Wassermenge.
+      // Alle drei sind weg.
+      //   Modus     -> geht jetzt beim Umstellen raus (s. modeRow), nicht mehr beim Start.
+      //   Saugstufe/Wassermenge -> waren schlicht doppelt. Die Werte je Raum stehen unten
+      //     in der Raumliste; global geschickt wurde jeweils der KLEINSTE Wert der Auswahl,
+      //     also eine Zahl, die fuer keinen der Raeume galt. HAs clean_segment schickt
+      //     ebenfalls nur die Liste und keine globalen Vorgaben.
+      // Damit ist der Start das, was er sein soll: ein einziger Befehl.
       const gewaehlteIds = [...selectedRooms];
-      const suct = Math.min(...gewaehlteIds.map(effSaug));           // 0..3
-      const wasser = modeWischt(cleanMode)
-        ? Math.min(...gewaehlteIds.map(effWasser)) : 0;              // 1..32, 0 = kein Wischen
-      if (!customizedCleaning){
-        cmd('remote.customCommand', JSON.stringify([{did:DID,siid:4,piid:23,value:cleanMode}]));
-        cmd('remote.suction-level', suct);
-        // Naesse 1..32 gehoert an wetness-level (28-1). Frueher ging sie an water-volume
-        // (4-5) — das ist die ALTE dreistufige Groesse (1=niedrig, 2=mittel, 3=hoch), die
-        // HA aus der Naesse nur ableitet (map.py 3467-3472). Ein Wert wie 16 wurde dort
-        // nie bestaetigt (ack:false) und blieb wirkungslos.
-        if (wasser) cmd('remote.wetness-level', wasser);
-      }
+      const suct = Math.min(...gewaehlteIds.map(effSaug));   // nur fuer den Individuell-Fall
+      const wasser = Math.min(...gewaehlteIds.map(effWasser));
       // Alle gewählten Räume: [RaumID, Wdh, Saug, Wasser(0=kein Wischen), Feld5]
       // Je Raum darf abgewichen werden (nur diese Fahrt, Einheitlich-Betrieb): HA kann das
       // genauso, dort nimmt clean_segment suction_level/water_volume auch als Liste je Raum.
@@ -1659,7 +1662,12 @@
         // Einheitlich: je Raum sein effektiver Wert (Abweichung, sonst der gespeicherte).
         // Individuell: das Geraet nimmt ohnehin das cleanset — Werte hier egal.
         const s = customizedCleaning ? suct   : effSaug(id);
-        const w = !modeWischt(cleanMode) ? 0 : (customizedCleaning ? wasser : effWasser(id));
+        // Wassermenge IMMER als echter Wert, auch beim reinen Saugen. Frueher stand hier
+        // eine 0, wenn nicht gewischt wird — das war eine Eigenmaechtigkeit von uns. HA
+        // schickt in clean_segment (device.py 4681-4692) unabhaengig vom Modus die
+        // Feuchtigkeitsstufe; ob gewischt wird, entscheidet der Modus ohnehin. Was das
+        // Geraet aus einer 0 macht, wussten wir nicht.
+        const w = customizedCleaning ? wasser : effWasser(id);
         return [id, 1, s, w, customizedFaehig ? 1 : i+1];
       });
       cmd('remote.start-custom-clean', JSON.stringify([{piid:1,value:18},{piid:10,value:JSON.stringify({selects})}]));
@@ -3210,6 +3218,15 @@
         const custWert = await sGet(sock, CUST_ID);
         customizedFaehig = (custWert != null);
         customizedCleaning = !!custWert;
+        // Modus vom Geraet uebernehmen, statt mit "Saugen" zu starten. Seit wir ihn beim
+        // Umstellen sofort senden, ist der State die Wahrheit — und wer ihn in der App
+        // aendert, soll das hier sehen.
+        const MODE_ID = `dreame.0.${DID}.remote.cleaning-mode`;
+        const modeWert = await sGet(sock, MODE_ID);
+        if (modeWert != null && CLEAN_MODES.some(m => m.id === Number(modeWert))) {
+          cleanMode = Number(modeWert);
+        }
+        sock.emit('subscribe', MODE_ID);
         for (const id of Object.keys(rooms||{})){
           const v = await sGet(sock, `dreame.0.${DID}.map.cleanset.${id}.RoomSettings`);
           if (typeof v === 'string') { try { roomCleanset[id] = JSON.parse(v); } catch(e){} }
@@ -3241,6 +3258,12 @@
           else if (id===IDS.charger) updateCharger(parsePt(st.val));
           else if (id===IDS.cloud)   rebuild(st.val); // rebuild dekodiert die Spur aus META.tr
           else if (id===CUST_ID){ customizedCleaning = !!st.val; updateCleanPanel(); }
+          else if (id===MODE_ID && st.val!=null && CLEAN_MODES.some(m=>m.id===Number(st.val))){
+            // Auch Aenderungen aus der App landen hier — dieselbe Anzeige wie beim Start.
+            cleanMode = Number(st.val);
+            document.getElementById('modeVal').textContent = modeOf(cleanMode).name;
+            updateCleanPanel();
+          }
           else if (CS_RE.test(id)){
             const rid = id.match(CS_RE)[1];
             if (typeof st.val === 'string'){ try { roomCleanset[rid] = JSON.parse(st.val); updateCleanPanel(); } catch(e){} }

@@ -2807,6 +2807,30 @@ class Dreame extends utils.Adapter {
   // checkboxes of one custom-room-cleaning map group (e.g. "map-53"). Room ids are only
   // meaningful within the map they were read from - callers must pass the map group whose
   // rooms should actually be cleaned, never mix roomIds across maps.
+  /**
+   * Cleaning mode 0 and 2 mean the opposite on devices with a liftable mop pad.
+   *
+   * Everywhere above this point one single numbering is used, the same as in Home
+   * Assistant: 0 vacuum, 1 mop, 2 vacuum+mop, 3 mop after vacuum. That is also what the
+   * state's value list says. On the wire, however, devices with a liftable pad swap 0 and
+   * 2 - so without this translation the object says "vacuum" while the robot mops.
+   *
+   * Same rule as HA (device.py 2054-2060), and the same place: right at the encode/decode
+   * boundary, so the device quirk stays in exactly one spot. The swap is its own inverse,
+   * hence one function for both directions.
+   *
+   * Capability detection follows HA (types.py 3226): a self-wash base together with an
+   * auto-empty base implies a liftable pad. Both show up as device properties.
+   */
+  _swapCleaningMode(did, key, mode) {
+    if (key !== '4-23' || (mode !== 0 && mode !== 2)) return mode;
+    const props = this.specPropsToIdDict[did];
+    if (!props) return mode;
+    const liftable = !!(props['4-25'] && props['15-5']); // self-wash-base-status + auto-empty-status
+    if (!liftable) return mode;
+    return mode === 0 ? 2 : 0;
+  }
+
   async _buildCustomRoomCleaningSelects(did, mapGroup) {
     const cbStates = await this.getStatesAsync(`${did}.remote.custom-room-cleaning.${mapGroup}.*`);
     const suctionSt = await this.getStateAsync(`${did}.remote.suction-level`);
@@ -2875,6 +2899,7 @@ class Dreame extends utils.Adapter {
         this.compoundRaw[did] = this.compoundRaw[did] || {};
         this.compoundRaw[did][key] = value;
         val = meta.decode(value);
+        val = this._swapCleaningMode(did, key, val);
       }
       const finalVal = typeof val === 'object'
         ? JSON.stringify(val)
@@ -5741,7 +5766,8 @@ class Dreame extends utils.Adapter {
               );
               return;
             }
-            writeValue = compoundMeta.encode(Number(state.val), rawCompound);
+            writeValue = compoundMeta.encode(
+              this._swapCleaningMode(deviceId, compoundKey, Number(state.val)), rawCompound);
             this.log.info(`Compound encode ${compoundKey}: field=${state.val}, raw=${rawCompound} → ${writeValue}`);
           }
           // miIO/Dreame cloud expects an array of property objects, not a single object.
