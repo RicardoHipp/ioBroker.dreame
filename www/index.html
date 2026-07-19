@@ -1063,22 +1063,19 @@
   // Faehigkeit zeigt sich daran, dass es die Eigenschaft ueberhaupt gibt. Wird beim
   // Zusammenbauen des Reinigungsbefehls gebraucht (Feld 5, s. dort).
   let customizedFaehig = false;
-  // Abweichungen NUR fuer die naechste Fahrt (Einheitlich-Betrieb): raumId -> {saug, wasser}.
-  // Gehen im selects-Feld mit und veraendern nichts dauerhaft. HA kann das genauso
-  // (clean_segment nimmt suction_level/water_volume auch als Liste je Raum).
-  const roomOverride = {};
   // Die einheitliche Saugstufe/Feuchtigkeit, wie das Geraet sie meldet (4-4 und 28-1).
   // Sie gilt im Einheitlich-Betrieb fuer den ganzen Auftrag — auch fuer den laufenden,
   // deshalb laesst sie sich waehrend der Fahrt aendern. Wird beim Verbinden gelesen und
   // abonniert, damit eine Aenderung in der App hier ankommt.
   let globalSaug = 1, globalWasser = 3;
-  // Der Wert, mit dem ein Raum tatsaechlich gereinigt wird: Abweichung, sonst der am Geraet
-  // gespeicherte cleanset-Wert. Damit gibt es EINE Wahrheit — die globalen Regler zeigen sie
-  // nur an (bzw. "Gemischt", wenn die gewaehlten Raeume verschieden sind).
-  const effSaug   = (id) => (roomOverride[id] && roomOverride[id].saug   !== undefined) ? roomOverride[id].saug
-                          : (roomCleanset[id] ? roomCleanset[id][0] : 1);
-  const effWasser = (id) => (roomOverride[id] && roomOverride[id].wasser !== undefined) ? roomOverride[id].wasser
-                          : (roomCleanset[id] ? roomCleanset[id][1] : 3);
+  // Die am Raum gespeicherten Werte. Gelten nur im Individuell-Betrieb — im Einheitlich-
+  // Betrieb gilt fuer jeden Raum globalSaug/globalWasser.
+  // Hier stand frueher zusaetzlich ein roomOverride: Abweichungen je Raum "nur fuer diese
+  // Fahrt", die im selects-Feld mitgingen. Der Roboter setzt das nicht um — er nimmt bei
+  // einheitlicher Reinigung einen Wert fuer alle. Damit war der Mechanismus wirkungslos
+  // und ist entfernt; siehe "Bekannte Einschraenkungen" in AENDERUNGEN.md.
+  const raumSaug   = (id) => (roomCleanset[id] ? roomCleanset[id][0] : 1);
+  const raumWasser = (id) => (roomCleanset[id] ? roomCleanset[id][1] : 3);
   // Was in EINEM Raum tatsaechlich passiert: individuell zaehlt sein cleanset, sonst der
   // globale Modus. Steuert, welche Symbole im Badge ueberhaupt auftauchen.
   const raumSaugt  = (id) => (customizedCleaning && roomCleanset[id])
@@ -1265,8 +1262,8 @@
     const einheitlich = !customizedCleaning;
     const teile = [];
     // Anzeige 1-4, intern 0-3
-    if (raumSaugt(id))  teile.push(['saugen', String((einheitlich ? globalSaug : effSaug(id)) + 1)]);
-    if (raumWischt(id)) teile.push(['wasser', String(einheitlich ? globalWasser : effWasser(id))]);
+    if (raumSaugt(id))  teile.push(['saugen', String((einheitlich ? globalSaug : raumSaug(id)) + 1)]);
+    if (raumWischt(id)) teile.push(['wasser', String(einheitlich ? globalWasser : raumWasser(id))]);
     if (raumWdh(id) > 1) teile.push(['wiederholung', String(raumWdh(id))]);
     if (!einheitlich) teile.push(['einstellungen', null]);                   // Hinweis: hier tippen
 
@@ -1516,20 +1513,18 @@
    * nichts am Geraet — deshalb kann "Abbrechen" auch wirklich verwerfen. (Vorher wurde
    * sofort geschrieben, dann war "Abbrechen" eine leere Versprechung.)
    *
-   * Zwei Betriebsarten, gleiche Bedienung:
-   *  - Individuell (customized-cleaning AN): Speichern schreibt in die cleanset-States;
-   *    der Adapter schickt sie ans Geraet, sie bleiben dort gespeichert. Modus je Raum moeglich.
-   *  - Einheitlich (AUS): Speichern merkt die Werte nur lokal (roomOverride) und gibt sie beim
-   *    Start im selects-Feld mit — gilt nur fuer diese Fahrt. Kein Modus, der ist global.
+   * Nur im Individuell-Betrieb erreichbar: Speichern schreibt in die cleanset-States, der
+   * Adapter schickt sie ans Geraet, sie bleiben dort gespeichert. Modus je Raum moeglich.
+   * Im Einheitlich-Betrieb fuehrt das Badge bewusst nirgendwo hin (Klasse "starr" in
+   * baueBadge) — dort gilt fuer jeden Raum derselbe Geraetewert.
    */
   function openRoomSettings(roomId){
-    const dauerhaft = customizedCleaning;
     const cs = roomCleanset[roomId] || [1, 3, 1, 0, 0, 546];
     const name = roomName(roomId, META && META.seg_inf);
     // Entwurf: Ausgangswerte = das, womit der Raum aktuell gereinigt wuerde
     const start = {
-      saug:   dauerhaft ? cs[0] : effSaug(roomId),
-      wasser: dauerhaft ? cs[1] : effWasser(roomId),
+      saug:   cs[0],
+      wasser: cs[1],
       wdh:    cs[2],
       modus:  cs[4],
     };
@@ -1569,25 +1564,19 @@
         w.append(l, i); box.appendChild(w);
       };
 
-      if (dauerhaft) {
-        zeile('Modus', (ROOM_MODES.find((m) => m.id === entwurf.modus) || ROOM_MODES[0]).name,
-          () => openPicker(name + ' — Modus', ROOM_MODES, entwurf.modus,
-            (id) => { entwurf.modus = id; zeichne(); }));
-      }
+      zeile('Modus', (ROOM_MODES.find((m) => m.id === entwurf.modus) || ROOM_MODES[0]).name,
+        () => openPicker(name + ' — Modus', ROOM_MODES, entwurf.modus,
+          (id) => { entwurf.modus = id; zeichne(); }));
       regler('Saugstärke', 0, 3, entwurf.saug, (v) => { entwurf.saug = v; },
         suctText);
       regler('Wassermenge', 1, 32, entwurf.wasser, (v) => { entwurf.wasser = v; });
-      if (dauerhaft) {
-        zeile('Wiederholung', (ROOM_REPEATS.find((r) => r.id === entwurf.wdh) || ROOM_REPEATS[0]).name,
-          () => openPicker(name + ' — Wiederholung', ROOM_REPEATS, entwurf.wdh,
-            (id) => { entwurf.wdh = id; zeichne(); }));
-      }
+      zeile('Wiederholung', (ROOM_REPEATS.find((r) => r.id === entwurf.wdh) || ROOM_REPEATS[0]).name,
+        () => openPicker(name + ' — Wiederholung', ROOM_REPEATS, entwurf.wdh,
+          (id) => { entwurf.wdh = id; zeichne(); }));
 
       const hint = document.createElement('div');
       hint.className = 'slabel'; hint.style.cssText = 'opacity:.65;margin-top:4px';
-      hint.textContent = dauerhaft
-        ? 'Mit „Speichern“ bleiben diese Einstellungen am Roboter gespeichert.'
-        : 'Gilt nur für diese Reinigung. Der Modus gilt global für alle Räume.';
+      hint.textContent = 'Mit „Speichern“ bleiben diese Einstellungen am Roboter gespeichert.';
       box.appendChild(hint);
       aktualisiereKnoepfe();
       // Nach einer Unter-Auswahl (Modus/Saugstaerke/Wiederholung) hat openPicker das Overlay
@@ -1603,19 +1592,14 @@
     };
 
     btnSave.onclick = () => {
-      if (dauerhaft) {
-        // nur die wirklich geaenderten Felder schreiben — jedes loest einen Geraetebefehl aus
-        const felder = { Level: 'saug', WaterVolume: 'wasser', Repeat: 'wdh', CleaningMode: 'modus' };
-        const pos    = { Level: 0, WaterVolume: 1, Repeat: 2, CleaningMode: 4 };
-        const c = (roomCleanset[roomId] || cs).slice();
-        for (const [feld, k] of Object.entries(felder)) {
-          if (entwurf[k] !== start[k]) { cmd(`map.cleanset.${roomId}.${feld}`, entwurf[k]); c[pos[feld]] = entwurf[k]; }
-        }
-        roomCleanset[roomId] = c;
-      } else {
-        const o = roomOverride[roomId] || (roomOverride[roomId] = {});
-        o.saug = entwurf.saug; o.wasser = entwurf.wasser;
+      // nur die wirklich geaenderten Felder schreiben — jedes loest einen Geraetebefehl aus
+      const felder = { Level: 'saug', WaterVolume: 'wasser', Repeat: 'wdh', CleaningMode: 'modus' };
+      const pos    = { Level: 0, WaterVolume: 1, Repeat: 2, CleaningMode: 4 };
+      const c = (roomCleanset[roomId] || cs).slice();
+      for (const [feld, k] of Object.entries(felder)) {
+        if (entwurf[k] !== start[k]) { cmd(`map.cleanset.${roomId}.${feld}`, entwurf[k]); c[pos[feld]] = entwurf[k]; }
       }
+      roomCleanset[roomId] = c;
       closePicker(); updateCleanPanel();
     };
 
@@ -1703,31 +1687,22 @@
     document.addEventListener('input',(e)=>{
       if (e.target && e.target.type==='range') reglerFuellung(e.target);
     }, true);
+    // Saugstufe und Feuchtigkeit sind eigene Geraeteeigenschaften (4-4 und 28-1) — dieselben,
+    // die die App unter "einheitlich" anbietet. Sie gehen sofort raus, wie der Modus eine
+    // Zeile weiter oben, und gelten fuer alle Raeume.
+    // Die Werte in der selects-Liste des Startbefehls reichen dafuer NICHT: der Roboter
+    // wendet sie nicht je Raum an (zwei Raeume mit gesendet 0 und 3 wurden hoerbar gleich
+    // laut gesaugt). Welche Quelle bei Widerspruch gewinnt, ist nicht sauber gemessen —
+    // seit Kachel, Badge und Liste denselben Wert fuehren, kann der Fall nicht auftreten.
+    // Individuell pro Raum ist ein anderer Betriebszustand (4-26), dort gilt das cleanset;
+    // die Kacheln sind dann gesperrt.
     const fuerAlle=(feld,wert)=>{
-      for (const id of selectedRooms){
-        const o = roomOverride[id] || (roomOverride[id] = {});
-        o[feld] = wert;
-      }
-      // Im Einheitlich-Betrieb sofort ans Geraet — wie der Modus eine Zeile weiter oben.
-      // Die Werte in der selects-Liste des Startbefehls reichen NICHT: das Geraet nimmt
-      // dort im Einheitlich-Betrieb nur EINEN Wert (beobachtet: den des ersten Raums) und
-      // wendet ihn auf alle an. Nachgewiesen mit [[8,1,0,...],[9,1,3,...]]: beide Raeume
-      // wurden gleich laut gesaugt, und remote.suction-level stand danach auf 0.
-      // Die einheitliche Stufe ist eine eigene Geraeteeigenschaft (4-4 bzw. 28-1) — genau
-      // die, die auch die App unter "einheitlich" anbietet. Individuell pro Raum ist ein
-      // anderer Betriebszustand (4-26), dort gilt das gespeicherte cleanset.
-      if (!customizedCleaning){
-        if (feld === 'saug')   cmd('remote.suction-level', wert);
-        if (feld === 'wasser') cmd('remote.wetness-level', wert);
-      }
+      if (feld === 'saug')   { globalSaug   = wert; cmd('remote.suction-level', wert); }
+      if (feld === 'wasser') { globalWasser = wert; cmd('remote.wetness-level', wert); }
       updateCleanPanel();
     };
-    // Die beiden Kacheln zeigen nur an; der Regler steckt im Overlay. Der uebernommene
-    // Wert gilt fuer alle gewaehlten Raeume — einzeln nachjustieren geht ueber das Badge.
-    // Der Regler startet auf dem Geraetewert — demselben, der auf der Kachel und in den
-    // Badges steht. Frueher war es der kleinste Wert der gewaehlten Raeume; dann zeigte
-    // die Kachel 23 und der Regler sprang beim Oeffnen auf 5.
-    // (Die Kacheln sind nur im Einheitlich-Betrieb bedienbar, s. updateCleanPanel.)
+    // Die beiden Kacheln zeigen nur an; der Regler steckt im Overlay. Er startet auf dem
+    // Geraetewert — demselben, der auf der Kachel und in den Badges steht.
     document.getElementById('suctionTile').onclick=()=>{
       openSlider('Saugstärke', { min:0, max:3, wert:globalSaug, text:suctText },
         (v)=> fuerAlle('saug', v));
@@ -1800,9 +1775,6 @@
         [id, 1, globalSaug, globalWasser, customizedFaehig ? 1 : i+1]);
       cmd('remote.start-custom-clean', JSON.stringify([{piid:1,value:18},{piid:10,value:JSON.stringify({selects})}]));
       selectedRooms.clear(); // Auswahl nach dem Start leeren, damit sie nicht beim naechsten Mal "vergessen" mitläuft
-      // Abweichungen gelten laut Beschriftung nur fuer DIESE Fahrt -> danach verwerfen,
-      // sonst wirken sie beim naechsten Start unsichtbar weiter.
-      for (const k of Object.keys(roomOverride)) delete roomOverride[k];
       drawFills(); updateLabels(); updateCleanPanel();
     };
     // Stop beendet den GANZEN Auftrag. Waehrend eines Waschgangs bleibt der Wischmopp

@@ -219,6 +219,22 @@ von der Kartendarstellung dieses Forks **nicht** unterstützt. Statt einer falsc
 kommt eine klare Fehlermeldung ins Log. Grund: Für diese Geräte fehlt uns ein Testgerät —
 blind gebaut würde es niemandem helfen.
 
+### Bei einheitlicher Reinigung gilt ein Wert für alle Räume
+Stellt man Saugstärke oder Wassermenge ein, gilt der Wert für alle gewählten Räume — auch
+im gesendeten Reinigungsbefehl steht überall dieselbe Zahl. Unterschiedliche Werte je Raum
+gibt es nur unter „Individuell pro Raum"; dann nutzt der Roboter das, was am Raum
+gespeichert ist.
+
+Getestet ist das an einem X40 Ultra: Dort wurden zwei Räume, denen ausdrücklich
+verschiedene Saugstufen mitgegeben wurden, hörbar gleich gesaugt. Dieselbe Beobachtung
+gibt es in der Home-Assistant-Integration (Issue #675) und im ioBroker-Forum. Dort wird
+allerdings vermutet, dass es nicht alle Modelle betrifft.
+
+Sollte dein Roboter unterschiedliche Werte je Raum tatsächlich umsetzen, bekommst du diese
+Möglichkeit im Widget trotzdem nicht — was fehlt, ist die Zwischenform „einmalig anders,
+ohne es zu speichern". Die bietet die Dreame-App selbst auch nicht an. Der Weg dorthin ist
+„Individuell pro Raum" plus die Einstellungen am jeweiligen Raum.
+
 ### „Wischen nach Saugen" geht nur für alle Räume gemeinsam
 Das ist keine Einschränkung des Adapters, sondern des Roboters: Pro Raum kann man nur
 Saugen, Wischen oder beides gleichzeitig wählen. „Erst alles saugen, dann alles wischen"
