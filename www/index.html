@@ -22,10 +22,13 @@
        Flaeche durchsichtig macht und nicht auch Dialoge, Kacheln und Kartenmarken. */
     --flaeche:var(--panel); --flaeche2:var(--panel2);
     --schleier:radial-gradient(circle at 50% 40%, rgba(43,180,226,.06), transparent 60%);
-    /* Hauch fuer die Bedienspalte im transparenten Betrieb: sie soll sich weiterhin
-       leicht von der Karte absetzen, ohne den VIS-Hintergrund zu verdecken. Dunkel im
-       dunklen Satz, hell im hellen — sonst wirkt es je nach Untergrund wie ein Fleck. */
-    --hauch:rgba(0,0,0,.28);
+    /* Hauch + Kante fuer die Bedienspalte im transparenten Betrieb: sie soll sich leicht
+       absetzen, ohne den VIS-Hintergrund zu verdecken.
+       GEGEN das Farbschema, nicht mit ihm: wer dunkel waehlt, hat ringsum eine dunkle
+       Flaeche — ein dunkler Hauch waere darauf unsichtbar. Deshalb im dunklen Satz ein
+       heller Hauch (wirkt wie angehoben), im hellen ein dunkler (wirkt wie Schatten). */
+    --hauch:rgba(255,255,255,.08);
+    --kante:rgba(255,255,255,.16);
     /* Anzeigegroesse der Bedienflaechen (Zahnrad-Menue). Bewusst NICHT auf die Karte:
        die zoomt man selbst, und sie soll beim Laden ganz zu sehen sein. */
     --ui:1;
@@ -34,13 +37,13 @@
     --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
     --txt:#1a2436; --muted:#5a6b88;
     --ok:#1a9e6b; --warn:#b57611; --bad:#d92f52;
-    --hauch:rgba(255,255,255,.45);
+    --hauch:rgba(0,0,0,.05); --kante:rgba(0,0,0,.14);
   }
   @media (prefers-color-scheme: light){
     :root:not([data-farben]){ --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
            --txt:#1a2436; --muted:#5a6b88;
            --ok:#1a9e6b; --warn:#b57611; --bad:#d92f52;
-           --hauch:rgba(255,255,255,.45); }
+           --hauch:rgba(0,0,0,.05); --kante:rgba(0,0,0,.14); }
   }
   /* Durchsichtig: der VIS-Hintergrund scheint durch. Bauteile bleiben deckend, sonst
      laege fremder Inhalt unter dem Text. Der Schleier hinter der Karte muss weg, sonst
@@ -49,6 +52,15 @@
      wie bisher leicht abheben, sonst schwimmen die Bedienelemente frei im VIS. */
   :root[data-hintergrund="transparent"]{
     --bg:transparent; --flaeche:transparent; --flaeche2:var(--hauch); --schleier:none;
+    /* Auch die Trennlinie braucht die Gegenrichtung: --line stammt aus dem Farbschema
+       und geht auf einem schwarzen VIS-Hintergrund genauso unter wie ein dunkler Hauch. */
+    --trennlinie:var(--kante);
+  }
+  /* Milchglas: verwischt, was dahinterliegt, und erzeugt dadurch eine Kante, selbst wenn
+     Farbe und Helligkeit fast gleich sind. Auf einer voellig einfarbigen Flaeche bringt
+     es nichts — dafuer ist der Hauch da. Beides zusammen deckt beide Faelle ab. */
+  :root[data-hintergrund="transparent"] .side{
+    backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px);
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
@@ -155,7 +167,7 @@
      soll sie behalten. Gezoomt wird nur der Inhalt darin (.sidein). Dadurch bleiben
      Hoehe und Zoom voneinander unabhaengig; wird der Inhalt zu lang, rollt er im Kasten. */
   .side{flex:none; width:calc(275px * var(--ui)); min-height:0; overflow-y:auto;
-    border-left:1px solid var(--line); background:var(--flaeche2)}
+    border-left:1px solid var(--trennlinie, var(--line)); background:var(--flaeche2)}
   .sidein{zoom:var(--ui); padding:16px}
   /* Schmal (Handy): Karte oben, Bedienung darunter — dann darf die Seite rollen, statt
      alles in die Fensterhoehe zu quetschen. */
