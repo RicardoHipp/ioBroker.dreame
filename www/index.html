@@ -270,12 +270,16 @@
   /* Statistik: hinter einem Knopf statt aufklappbar. Aufgeklappt schob sie in der Spalte
      alles nach unten, und in der waagerechten Leiste haette sie eine eigene Spalte
      gebraucht — als Knopf passt sie unter die Aktionsknoepfe. */
-  .statsbtn{width:100%;margin-top:12px;padding:9px;border-radius:10px;cursor:pointer;
-    border:1.5px solid var(--line);background:var(--panel2);color:var(--muted);
-    font:inherit;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
-    display:flex;align-items:center;justify-content:center;gap:7px;transition:.12s}
-  .statsbtn:hover{border-color:var(--accent);color:var(--txt)}
-  .statsbtn:active{transform:scale(.97)}
+  /* Sieht aus wie eine Auswahlzeile, weil er dasselbe tut: antippen oeffnet einen Dialog.
+     Gleiche Masse, gleicher Rahmen, gleiche Schriftgroessen — nur ohne Wert rechts. */
+  .statsbtn{width:100%;margin-top:12px;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:11px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);
+    color:var(--txt);font:inherit;font-size:12px;cursor:pointer;user-select:none;transition:.12s}
+  .statsbtn:hover{border-color:var(--accent,#4a78e0)}
+  .statsbtn .stbeschriftung{flex:1;text-align:left;opacity:.75}
+  .statsbtn .chev{opacity:.6;color:var(--accent,#4a78e0)}
+  .statsbtn .ico:first-child{opacity:.75}
   .statlist{display:flex;flex-direction:column;gap:5px;margin-top:8px;font-size:12.5px}
   .statlist div{display:flex;justify-content:space-between;gap:10px}
   .statlist span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
@@ -451,7 +455,9 @@
           <div class="verbrauch" id="verbrauch"></div>
           <!-- Wird bei waagerechter Leiste nach unten zu den Aktionsknoepfen verschoben
                (s. setzeAussehen) — dort ist Platz, und es spart eine ganze Spalte. -->
-          <button class="statsbtn" id="statsBtn" type="button" hidden>Statistik</button>
+          <button class="statsbtn" id="statsBtn" type="button" hidden>
+            <span class="stbeschriftung">Statistik</span>
+          </button>
         </section>
       </div></div>
     </div>
@@ -1392,8 +1398,10 @@
       if (el) el.insertAdjacentHTML('afterbegin', uiIcon(name, 16));
     }
     // Statistik-Kopfzeile: Symbol davor, Klapp-Pfeil dahinter (dreht sich per CSS)
+    // Symbol vorn, Pfeil hinten — wie in den Auswahlzeilen
     const sb = document.getElementById('statsBtn');
-    if (sb){ sb.insertAdjacentHTML('afterbegin', uiIcon('statistik',14));
+    if (sb){ sb.insertAdjacentHTML('afterbegin', uiIcon('statistik',15));
+             sb.insertAdjacentHTML('beforeend', uiIcon('weiter',16,'chev'));
              sb.onclick = openStatistik; }
     const adr = document.querySelector('.adresse summary');
     if (adr) adr.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev'));
