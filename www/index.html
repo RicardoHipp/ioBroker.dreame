@@ -90,7 +90,7 @@
     font-size:13px; filter:drop-shadow(0 1px 1px rgba(255,255,255,.7)); pointer-events:none;}
   .rbadge{cursor:pointer; color:var(--txt)}
   .rbadge .pille{fill:var(--panel); stroke:var(--line); stroke-width:1; opacity:.96}
-  .rbadge .hit{fill:transparent}          /* 44px Trefferflaeche fuer den Finger */
+  .rbadge .hit{fill:transparent}          /* deckungsgleich mit der Pille, s. baueBadge */
   .rbadge text{font-size:12px; font-weight:800; dominant-baseline:middle;
     fill:var(--txt); text-anchor:start; user-select:none}
   .rbadge .zr{opacity:.55}                /* Zahnrad nur andeuten */
@@ -755,7 +755,7 @@
 
   // ===== Raum-Badges auf der Karte =====
   // Masse in Bildschirmpixeln (die Marke wird gegen den Zoom skaliert, s. skaliereMarken).
-  const BDG = { hoehe:22, ikon:14, ziffer:7, luecke:2, abstand:8, rand:8, tipp:44 };
+  const BDG = { hoehe:22, ikon:14, ziffer:7, luecke:2, abstand:8, rand:8 };
   // Das Badge wird zusaetzlich vergroessert — es ist die Schaltflaeche auf der Karte und
   // soll auf dem Tablett gut zu treffen sein. Bewusst NUR das Badge und nicht die ganze
   // Raummarke: der Raumname darueber soll seine Groesse behalten, sonst ueberdecken sich
@@ -805,8 +805,12 @@
       if (r) { e.setAttribute('rx', r); e.setAttribute('ry', r); }
       g.appendChild(e);
     };
-    // Trefferflaeche zuerst und groesser als die Pille: am Tablet zaehlt die Flaeche
-    kasten('hit', x0 - 6, -BDG.tipp/2, breite + 12, BDG.tipp);
+    // Trefferflaeche deckungsgleich mit der Pille. Frueher war sie groesser (44 statt 22
+    // hoch, seitlich je 6 mehr), weil die Pille fuer einen Finger zu klein war. Seit das
+    // Badge um BDG_SKALA vergroessert wird, reicht die Pille selbst — und der Ueberstand
+    // war sogar schaedlich: er lag ueber der Raumflaeche, sodass ein Tipp NEBEN das Badge
+    // das Einstellungsfenster oeffnete statt den Raum ab- oder anzuwaehlen.
+    kasten('hit', x0, -BDG.hoehe/2, breite, BDG.hoehe, BDG.hoehe/2);
     kasten('pille', x0, -BDG.hoehe/2, breite, BDG.hoehe, BDG.hoehe/2);
 
     let x = x0 + BDG.rand;
