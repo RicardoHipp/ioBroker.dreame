@@ -1256,16 +1256,20 @@
    */
   function baueBadge(id){
     // Im Einheitlich-Betrieb gilt fuer JEDEN Raum derselbe Geraetewert — dann zeigt das
-    // Badge genau den, nicht den je Raum gespeicherten cleanset-Wert. Und es fuehrt dort
-    // nirgendwo hin: die Raum-Einstellungen wirken nur im Individuell-Betrieb, also kein
-    // Zahnrad und kein Tipp-Ziel (s. Klasse "starr" unten).
+    // Badge genau den, nicht den je Raum gespeicherten cleanset-Wert.
     const einheitlich = !customizedCleaning;
+    // Reine Anzeige (kein Zahnrad, nicht antippbar) in zwei Faellen:
+    //  - Einheitlich: die Raum-Einstellungen dahinter wirken nur im Individuell-Betrieb.
+    //  - Waehrend einer Reinigung: das Badge zeigt dann, womit gerade gefahren wird.
+    //    Mittendrin daran zu drehen wuerde ins cleanset schreiben, waehrend der Roboter
+    //    laengst mit den alten Werten unterwegs ist.
+    const nurAnzeige = einheitlich || geraetGestartet();
     const teile = [];
     // Anzeige 1-4, intern 0-3
     if (raumSaugt(id))  teile.push(['saugen', String((einheitlich ? globalSaug : raumSaug(id)) + 1)]);
     if (raumWischt(id)) teile.push(['wasser', String(einheitlich ? globalWasser : raumWasser(id))]);
     if (raumWdh(id) > 1) teile.push(['wiederholung', String(raumWdh(id))]);
-    if (!einheitlich) teile.push(['einstellungen', null]);                   // Hinweis: hier tippen
+    if (!nurAnzeige) teile.push(['einstellungen', null]);                   // Hinweis: hier tippen
 
     let breite = BDG.rand * 2;
     for (const [, wert] of teile){
@@ -1275,7 +1279,7 @@
     breite -= BDG.abstand;
 
     const g = document.createElementNS(NS,'g');
-    g.setAttribute('class', einheitlich ? 'rbadge starr' : 'rbadge'); g.dataset.raum = id;
+    g.setAttribute('class', nurAnzeige ? 'rbadge starr' : 'rbadge'); g.dataset.raum = id;
     const x0 = -breite / 2;
     const kasten = (klasse, x, y, w, h, r) => {
       const e = document.createElementNS(NS,'rect');
@@ -1312,12 +1316,19 @@
     return g;
   }
 
-  /** Badges neu aufbauen — nur fuer gewaehlte Raeume, sonst wird die Karte unruhig. */
+  /**
+   * Badges neu aufbauen — nicht an allen Raeumen, sonst wird die Karte unruhig.
+   * Ohne laufenden Auftrag an den GEWAEHLTEN Raeumen (was sie erwartet), waehrend einer
+   * Reinigung an den Raeumen des laufenden Auftrags (womit gerade gefahren wird). Die
+   * Auswahl wird beim Start geleert, sonst waeren waehrend der Fahrt gar keine Badges da.
+   */
   function updateRoomBadges(){
+    const laeuft = geraetGestartet();
     for (const id of Object.keys(markEls)){
       const g = markEls[id], alt = g.querySelector('.rbadge');
       if (alt) alt.remove();
-      if (!selectedRooms.has(+id) || hidden.has(+id)) continue;
+      const zeigen = laeuft ? activeSegs.has(+id) : selectedRooms.has(+id);
+      if (!zeigen || hidden.has(+id)) continue;
       const b = baueBadge(+id);
       // unter den Raumnamen, dort um BDG_SKALA vergroessert (Mitte bleibt die Mitte,
       // weil das Badge um x=0 herum aufgebaut ist)
@@ -2416,7 +2427,11 @@
                               heiss?ICON.ST_HOT_DRYING:ICON.ST_DRYING,ICON_SIZE.charger,'above');
   }
   function setVst(key,val){ VST[key]=(val==null||val==='')?null:Number(val);
-    updateStatusPanel(); updateBadges(); updateStartPause();
+    // updateCleanPanel statt nur updateStartPause: an "laeuft gerade" haengen inzwischen
+    // auch die Sperren von Modus/Betriebsart und die Raum-Badges (welche Raeume ueberhaupt
+    // eins bekommen und ob es antippbar ist). Ohne das blieben sie bis zum naechsten
+    // Kartenpaket im Zustand von vorher stehen.
+    updateStatusPanel(); updateBadges(); updateCleanPanel();
     // Auch die Meldungen: ob eine unterdrueckt wird, haengt bei zwei Codes am
     // Geraetezustand (Laden bzw. Waschstation vorhanden) — s. fehlerUnterdruecken.
     // Ohne das bliebe "Akku leer" stehen, bis sich zufaellig ein anderer Wert aendert.
