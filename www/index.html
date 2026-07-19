@@ -973,6 +973,11 @@
   ];
   const roomCleanset = {};        // raumId -> [Saug, Wasser, Wdh, Reihenfolge, Modus, Route]
   let customizedCleaning = false; // Geraeteschalter 4-26: true = jeder Raum nach seinen eigenen Werten
+  // Ob das Geraet individuelle Raum-Einstellungen ueberhaupt BEHERRSCHT — nicht, ob sie
+  // gerade eingeschaltet sind. Entspricht HAs capability.self_wash_base-Muster: die
+  // Faehigkeit zeigt sich daran, dass es die Eigenschaft ueberhaupt gibt. Wird beim
+  // Zusammenbauen des Reinigungsbefehls gebraucht (Feld 5, s. dort).
+  let customizedFaehig = false;
   // Abweichungen NUR fuer die naechste Fahrt (Einheitlich-Betrieb): raumId -> {saug, wasser}.
   // Gehen im selects-Feld mit und veraendern nichts dauerhaft. HA kann das genauso
   // (clean_segment nimmt suction_level/water_volume auch als Liste je Raum).
@@ -1635,15 +1640,23 @@
         // nie bestaetigt (ack:false) und blieb wirkungslos.
         if (wasser) cmd('remote.wetness-level', wasser);
       }
-      // Alle gewählten Räume: [RaumID, Wdh, Saug, Wasser(0=kein Wischen), idx] — idx 1..n wie dreamehome/HA
+      // Alle gewählten Räume: [RaumID, Wdh, Saug, Wasser(0=kein Wischen), Feld5]
       // Je Raum darf abgewichen werden (nur diese Fahrt, Einheitlich-Betrieb): HA kann das
       // genauso, dort nimmt clean_segment suction_level/water_volume auch als Liste je Raum.
+      //
+      // FELD 5 IST KEINE LAUFENDE NUMMER, auch wenn es so aussieht. HA setzt es auf 1,
+      // sobald das Geraet individuelle Raum-Einstellungen beherrscht, und schreibt dazu
+      // (device.py 4696-4698):
+      //     "Sending index other than 1 breaks the operation of 5th gen devices"
+      // Genau das ist hier passiert: mit 1,2 hat der X40 nur den ersten Raum gereinigt und
+      // ist danach zur Station gefahren. Nur aeltere Geraete ohne diese Faehigkeit
+      // bekommen die laufende Nummer.
       const selects = [...selectedRooms].sort((a,b)=>a-b).map((id,i)=>{
         // Einheitlich: je Raum sein effektiver Wert (Abweichung, sonst der gespeicherte).
         // Individuell: das Geraet nimmt ohnehin das cleanset — Werte hier egal.
         const s = customizedCleaning ? suct   : effSaug(id);
         const w = !modeWischt(cleanMode) ? 0 : (customizedCleaning ? wasser : effWasser(id));
-        return [id, 1, s, w, i+1];
+        return [id, 1, s, w, customizedFaehig ? 1 : i+1];
       });
       cmd('remote.start-custom-clean', JSON.stringify([{piid:1,value:18},{piid:10,value:JSON.stringify({selects})}]));
       selectedRooms.clear(); // Auswahl nach dem Start leeren, damit sie nicht beim naechsten Mal "vergessen" mitläuft
@@ -3167,7 +3180,11 @@
         // ob die globalen Regler ueberhaupt etwas bewirken.
         const CUST_ID = `dreame.0.${DID}.remote.customized-cleaning`;
         const CS_RE   = new RegExp(`^dreame\\.0\\.${DID}\\.map\\.cleanset\\.(\\d+)\\.RoomSettings$`);
-        customizedCleaning = !!(await sGet(sock, CUST_ID));
+        // null = Eigenschaft gibt es nicht -> Geraet kennt keine individuellen
+        // Raum-Einstellungen. Der Wert selbst sagt nur, ob sie eingeschaltet sind.
+        const custWert = await sGet(sock, CUST_ID);
+        customizedFaehig = (custWert != null);
+        customizedCleaning = !!custWert;
         for (const id of Object.keys(rooms||{})){
           const v = await sGet(sock, `dreame.0.${DID}.map.cleanset.${id}.RoomSettings`);
           if (typeof v === 'string') { try { roomCleanset[id] = JSON.parse(v); } catch(e){} }

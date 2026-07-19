@@ -85,6 +85,16 @@ sofort wieder weg. Mit der Maus am PC ging es.
 und wächst mit der eingestellten Anzeigegröße mit, und ein Antippen wird nicht mehr als
 Verschieben der Karte gewertet, wenn der Finger dabei ein paar Pixel verrutscht.
 
+### Es werden wieder alle gewählten Räume gereinigt
+**Vorher:** Wählte man mehrere Räume aus, fuhr der Roboter nur in den ersten und danach
+zurück zur Station. Die übrigen wurden übersprungen — ohne Fehlermeldung.
+**Jetzt:** Alle gewählten Räume werden abgearbeitet.
+
+*(Ursache: Im Reinigungsbefehl steht je Raum ein fünftes Feld, das wie eine laufende
+Nummer aussieht. Bei neueren Geräten muss dort aber überall eine 1 stehen — ein anderer
+Wert bringt den Ablauf durcheinander. Betrifft auch das Original; als Fehlerbericht
+formuliert.)*
+
 ### Fehlermeldungen stehen im Klartext
 **Vorher:** Bei einer Meldung des Roboters stand nur „Fehler 68" — nachschlagen musste man
 selbst.

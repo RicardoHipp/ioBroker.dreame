@@ -2817,11 +2817,17 @@ class Dreame extends utils.Adapter {
     const waterVolume = waterSt ? Number(waterSt.val) : 0;
     const selects = [];
     let selectIdx = 1;
+    // 5th field is NOT a running index on devices that support per-room settings. HA sets
+    // it to 1 for those (device.py 4696-4698) with the note:
+    //   "Sending index other than 1 breaks the operation of 5th gen devices"
+    // Confirmed here: with 1,2 an X40 Ultra cleaned only the first room and returned to the
+    // dock. The capability shows in the device spec having property 4-26.
+    const perRoomCapable = !!(this.specPropsToIdDict[did] && this.specPropsToIdDict[did]['4-26']);
     for (const cbId of Object.keys(cbStates)) {
       if (cbStates[cbId] && cbStates[cbId].val === true) {
         const cbObj = await this.getObjectAsync(cbId);
         if (cbObj && cbObj.native && cbObj.native.roomId !== undefined) {
-          selects.push([cbObj.native.roomId, 1, suctionLevel, waterVolume, selectIdx]);
+          selects.push([cbObj.native.roomId, 1, suctionLevel, waterVolume, perRoomCapable ? 1 : selectIdx]);
           selectIdx++;
         }
       }
