@@ -39,3 +39,6 @@ __pycache__/
 
 push.bat
 PORT_STATUS.md
+
+# Lokale Sicherungskopien beim Umbau (bleiben auf dem Rechner)
+*.bak
