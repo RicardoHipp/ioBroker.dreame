@@ -305,6 +305,10 @@
      bildet den frueheren Zustand nach, als beide noch in einem Block mit gap:10 lagen. */
   .gruppe + .gruppe{margin-top:18px}
   .gruppe + .g-steuer{margin-top:10px}
+  /* Wertekacheln, Aktionsknoepfe und der Statistik-Knopf klebten aneinander: sie waren
+     schlichte Nachbarn ohne Abstand. Derselbe Abstand wie zwischen den Auswahlzeilen. */
+  .g-steuer{display:flex; flex-direction:column; gap:10px}
+  .g-steuer .statsbtn{margin-top:0}
   .selroom{font-weight:800;font-size:14px;color:var(--accent,#4a78e0)}
   /* Auswahl-Zeile: tippt man drauf, oeffnet sich ein Overlay mit den Optionen.
      Touch-freundlich (grosses Tap-Ziel) und platzsparend; dasselbe Muster soll spaeter
