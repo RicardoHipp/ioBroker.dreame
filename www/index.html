@@ -169,6 +169,11 @@
   .side{flex:none; width:calc(275px * var(--ui)); min-height:0; overflow-y:auto;
     border-left:1px solid var(--trennlinie, var(--line)); background:var(--flaeche2)}
   .sidein{zoom:var(--ui); padding:16px}
+  /* Lage der Bedienleiste. Der Flexaufbau macht die Anordnung, die Trennlinie muss auf
+     die Seite wandern, die zur Karte zeigt — sonst sitzt der Strich am Aussenrand. */
+  :root[data-leiste="links"] .body{flex-direction:row-reverse}
+  :root[data-leiste="links"] .side{border-left:none;
+    border-right:1px solid var(--trennlinie, var(--line))}
   /* Schmal (Handy): Karte oben, Bedienung darunter — dann darf die Seite rollen, statt
      alles in die Fensterhoehe zu quetschen. */
   @media (max-width:720px){
@@ -420,6 +425,13 @@
         <span class="pk">Hintergrund</span>
         <span class="pv"><span id="hgVal">Gefüllt</span></span>
       </div>
+      <div class="pickrow" id="leisteRow">
+        <span class="pk">Bedienung</span>
+        <span class="pv"><span id="leisteVal">Rechts</span></span>
+      </div>
+      <div class="slabel" style="opacity:.7;margin-top:6px">
+        Auf schmalen Bildschirmen steht die Bedienung immer unter der Karte.
+      </div>
       <details class="adresse" id="adrBox">
         <summary><span class="sumtext">Adresse mit diesen Einstellungen</span></summary>
         <p class="adrtext">
@@ -521,8 +533,13 @@
     { id:'gefuellt',    name:'Gefüllt',     desc:'Eigene Hintergrundfarbe' },
     { id:'transparent', name:'Transparent', desc:'Der Hintergrund der Seite scheint durch — für VIS' },
   ];
-  let farbWahl = holeWahl('farben', ['auto','hell','dunkel'], 'auto');
-  let hgWahl   = holeWahl('hintergrund', ['gefuellt','transparent'], 'gefuellt');
+  const LEISTE = [
+    { id:'rechts', name:'Rechts', desc:'Bedienung neben der Karte' },
+    { id:'links',  name:'Links',  desc:'Bedienung neben der Karte' },
+  ];
+  let farbWahl   = holeWahl('farben', ['auto','hell','dunkel'], 'auto');
+  let hgWahl     = holeWahl('hintergrund', ['gefuellt','transparent'], 'gefuellt');
+  let leisteWahl = holeWahl('leiste', LEISTE.map(l=>l.id), 'rechts');
 
   /** Farben und Hintergrund als Attribute am Wurzelelement setzen; das CSS haengt daran. */
   function setzeAussehen(merken){
@@ -532,15 +549,25 @@
     else w.setAttribute('data-farben', farbWahl);
     if (hgWahl === 'transparent') w.setAttribute('data-hintergrund', 'transparent');
     else w.removeAttribute('data-hintergrund');
+    // "rechts" ist die Grundanordnung im CSS — dafuer braucht es kein Attribut
+    if (leisteWahl === 'rechts') w.removeAttribute('data-leiste');
+    else w.setAttribute('data-leiste', leisteWahl);
     const fv = document.getElementById('farbenVal');
     const hv = document.getElementById('hgVal');
+    const lv = document.getElementById('leisteVal');
     if (fv) fv.textContent = (FARBEN.find(f=>f.id===farbWahl)||FARBEN[0]).name;
     if (hv) hv.textContent = (HINTERGRUND.find(h=>h.id===hgWahl)||HINTERGRUND[0]).name;
+    if (lv) lv.textContent = (LEISTE.find(l=>l.id===leisteWahl)||LEISTE[0]).name;
     if (merken){
       try { localStorage.setItem('dreame.farben', farbWahl);
-            localStorage.setItem('dreame.hintergrund', hgWahl); } catch (e) {}
+            localStorage.setItem('dreame.hintergrund', hgWahl);
+            localStorage.setItem('dreame.leiste', leisteWahl); } catch (e) {}
     }
     baueAdresse();
+    // Die Karte kann jetzt anders viel Platz haben (bei oben/unten aendert sich die
+    // Hoehe). Ausschnitt neu einpassen; beim ersten Aufruf steht sie noch nicht.
+    try { if (stage && stage.clientWidth){ fitVisible(); skaliereMarken(true); } }
+    catch (e) {}
   }
 
   /** Adresse mit den aktuellen Einstellungen — zum Einbetten in VIS. */
@@ -551,6 +578,7 @@
     if (DID) p.set('did', DID);
     if (farbWahl !== 'auto') p.set('farben', farbWahl);
     if (hgWahl !== 'gefuellt') p.set('hintergrund', hgWahl);
+    if (leisteWahl !== 'rechts') p.set('leiste', leisteWahl);
     if (uiFaktor !== 1) p.set('ui', String(Math.round(uiFaktor * 100)));
     const s = p.toString();
     feld.value = location.origin + location.pathname + (s ? '?' + s : '');
@@ -2253,6 +2281,8 @@
       (id)=>{ farbWahl = id; setzeAussehen(true); });
     document.getElementById('hgRow').onclick = ()=> openPicker('Hintergrund', HINTERGRUND, hgWahl,
       (id)=>{ hgWahl = id; setzeAussehen(true); });
+    document.getElementById('leisteRow').onclick = ()=> openPicker('Bedienung', LEISTE, leisteWahl,
+      (id)=>{ leisteWahl = id; setzeAussehen(true); });
     // Adresse kopieren. navigator.clipboard gibt es nur ueber HTTPS bzw. auf localhost —
     // im Heimnetz laeuft ioBroker meist ueber HTTP, deshalb der Rueckfall auf Markieren.
     const adrCopy = document.getElementById('adrCopy'), adrFeld = document.getElementById('adrFeld');
