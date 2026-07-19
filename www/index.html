@@ -756,6 +756,11 @@
   // ===== Raum-Badges auf der Karte =====
   // Masse in Bildschirmpixeln (die Marke wird gegen den Zoom skaliert, s. skaliereMarken).
   const BDG = { hoehe:22, ikon:14, ziffer:7, luecke:2, abstand:8, rand:8, tipp:44 };
+  // Das Badge wird zusaetzlich vergroessert — es ist die Schaltflaeche auf der Karte und
+  // soll auf dem Tablett gut zu treffen sein. Bewusst NUR das Badge und nicht die ganze
+  // Raummarke: der Raumname darueber soll seine Groesse behalten, sonst ueberdecken sich
+  // die Beschriftungen enger Raeume.
+  const BDG_SKALA = 1.5;
 
   /** Ein Icon aus UI_ICONS als SVG-Gruppe, auf px-Kantenlaenge gebracht. */
   function svgIkon(name, px, klasse){
@@ -831,7 +836,9 @@
       if (alt) alt.remove();
       if (!selectedRooms.has(+id) || hidden.has(+id)) continue;
       const b = baueBadge(+id);
-      b.setAttribute('transform', `translate(0 ${BDG.hoehe})`);   // unter den Raumnamen
+      // unter den Raumnamen, dort um BDG_SKALA vergroessert (Mitte bleibt die Mitte,
+      // weil das Badge um x=0 herum aufgebaut ist)
+      b.setAttribute('transform', `translate(0 ${BDG.hoehe}) scale(${BDG_SKALA})`);
       g.appendChild(b);
     }
   }
