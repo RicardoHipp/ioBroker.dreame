@@ -111,13 +111,17 @@ wendet ihn auf alles an. Verstellte man die Kachel, passierte dadurch praktisch 
 **Jetzt:** Der Wert geht sofort ans Gerät, sobald man ihn ändert — genau wie der
 Reinigungsmodus und genau wie in der App.
 
-### Während der Reinigung lässt sich einstellen, was auch wirklich geht
-**Vorher:** Lief eine Reinigung, waren Saugstärke und Wassermenge ausgegraut, während
-„Reinigung" und „Modus" anklickbar blieben — also genau verkehrt herum.
-**Jetzt:** Saugstärke und Wassermenge sind während der Fahrt bedienbar und wirken sofort
-auf den laufenden Auftrag. Betriebsart und Modus sind gesperrt, solange etwas läuft: Die
-legen fest, was für ein Auftrag unterwegs ist, und der Roboter würde eine Änderung
-ohnehin erst beim nächsten Mal anwenden.
+### Ausgegraut ist nur noch, was wirklich nicht geht
+**Vorher:** Saugstärke und Wassermenge ließen sich nur anklicken, wenn vorher ein Raum
+ausgewählt war — ohne Auswahl waren sie grau, ohne dass ersichtlich war, warum. Während
+einer laufenden Reinigung waren sie ebenfalls gesperrt, während „Reinigung" und „Modus"
+anklickbar blieben, also genau verkehrt herum.
+**Jetzt:** Saugstärke und Wassermenge sind immer bedienbar — sie sind Geräteeinstellungen
+und gelten auch ohne Auftrag, genau wie in der App. Während einer Fahrt wirken sie sofort
+auf den laufenden Auftrag. Gesperrt ist nur noch, was der Modus nicht nutzt (keine
+Wassermenge beim reinen Saugen) und was mitten im Auftrag nicht mehr sinnvoll ist:
+Betriebsart und Modus legen fest, was für ein Auftrag unterwegs ist, und der Roboter
+würde eine Änderung ohnehin erst beim nächsten Mal anwenden.
 
 ### Räume heißen so, wie man sie in der App genannt hat
 **Vorher:** Räume ohne zugewiesenen Raumtyp hießen im Widget alle gleich, nämlich schlicht

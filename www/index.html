@@ -1370,11 +1370,10 @@
 
     // Globale Regler ZEIGEN den Stand der gewaehlten Raeume: gleicher Wert -> dieser Wert,
     // unterschiedliche -> "Gemischt (min–max)". Verstellen setzt dann alle auf einmal.
-    // Waehrend einer Fahrt gibt es keine Auswahl mehr (sie wird beim Start geleert), aber
-    // die einheitlichen Werte gelten weiter und lassen sich live nachstellen. Dann zeigen
-    // die Kacheln, was das Geraet meldet, statt eines Werts aus der leeren Auswahl.
+    // Ohne Auswahl steht dort der Wert, den das Geraet meldet — das ist der, der wirkt.
+    // Das ist auch der Fall waehrend einer Fahrt, denn die Auswahl wird beim Start geleert.
     const laeuft = geraetGestartet();
-    if (!customizedCleaning && (gewaehlt.length || laeuft)){
+    if (!customizedCleaning){
       // Auf den beiden Kompaktkarten steht nur die Zahl — das Wort dazu sieht man im
       // Dialog. Weichen die gewaehlten Raeume voneinander ab, steht dort "min–max".
       const zeig = (label, werte, text) => {
@@ -1388,14 +1387,16 @@
     }
     // Sperren, was der eingestellte Modus gar nicht nutzt: beim reinen Saugen gibt es
     // keine Wassermenge, beim reinen Wischen keine Saugstaerke.
-    // Ohne Auswahl UND ohne laufenden Auftrag ist beides gesperrt — der Wert wuerde dann
-    // fuer niemanden gelten. Laeuft dagegen etwas, sind sie offen: Saugstufe und Naesse
-    // wirken sofort auf den laufenden Auftrag, so wie in der App.
+    // Eine Raumauswahl ist NICHT noetig — Saugstufe und Naesse sind Geraeteeigenschaften
+    // (4-4 und 28-1) und gelten auch ohne Auftrag, genau wie in der App. Frueher war hier
+    // eine Auswahl verlangt: damals setzten die Kacheln nur Abweichungen je Raum, ohne
+    // Auswahl haette der Wert fuer niemanden gegolten. Seit sie die Eigenschaft selbst
+    // schreiben, ist diese Begruendung weg — die Sperre wirkte nur noch verwirrend.
     // Im Individuell-Betrieb gelten die globalen Werte ohnehin nicht (das Geraet nimmt
     // dann das, was am Raum gespeichert ist) — dann sind sie gesperrt.
     const st=document.getElementById('suctionTile'), wt=document.getElementById('waterTile');
-    if (st) st.disabled = customizedCleaning || !(gewaehlt.length || laeuft) || !modeSaugt(cleanMode);
-    if (wt) wt.disabled = customizedCleaning || !(gewaehlt.length || laeuft) || !modeWischt(cleanMode);
+    if (st) st.disabled = customizedCleaning || !modeSaugt(cleanMode);
+    if (wt) wt.disabled = customizedCleaning || !modeWischt(cleanMode);
 
     // Betriebsart: entweder globale Regler ODER die Werte je Raum — nie beides,
     // denn im Individuell-Betrieb ignoriert das Geraet die globalen Werte.
