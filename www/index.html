@@ -1548,8 +1548,13 @@
       // 5120=Saugen&Wischen, 5121=nur Wischen, 5122=nur Saugen, 5123=Wischen nach Saugen
       // Im Individuell-Betrieb nimmt das Geraet die gespeicherten Werte je Raum und ignoriert
       // globalen Modus/Saugstaerke/Wasser — dann schicken wir sie erst gar nicht mit.
-      const suct = +suction.value;                                  // 0..3
-      const wasser = modeWischt(cleanMode) ? +water.value : 0;      // 1..32, 0 = kein Wischen
+      // Frueher standen hier die Werte der beiden Regler (+suction.value / +water.value).
+      // Seit sie durch Kacheln ersetzt sind, gibt es diese Elemente nicht mehr — die Werte
+      // kommen jetzt aus derselben Quelle wie die Anzeige: dem kleinsten Wert der Auswahl.
+      const gewaehlteIds = [...selectedRooms];
+      const suct = Math.min(...gewaehlteIds.map(effSaug));           // 0..3
+      const wasser = modeWischt(cleanMode)
+        ? Math.min(...gewaehlteIds.map(effWasser)) : 0;              // 1..32, 0 = kein Wischen
       if (!customizedCleaning){
         cmd('remote.customCommand', JSON.stringify([{did:DID,siid:4,piid:23,value:cleanMode}]));
         cmd('remote.suction-level', suct);
