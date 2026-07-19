@@ -134,6 +134,16 @@
       "license": "MIT"
     },
     "platform": "Javascript/Node.js",
+    "localLinks": {
+      "_default": {
+        "link": "%web_protocol%://%ip%:%web_port%/dreame/",
+        "name": {
+          "en": "Vacuum map",
+          "de": "Saugroboter-Karte"
+        },
+        "intro": true
+      }
+    },
     "icon": "dreame.png",
     "enabled": true,
     "extIcon": "https://raw.githubusercontent.com/RicardoHipp/ioBroker.dreame/main/admin/dreame.png",

@@ -2,6 +2,19 @@
   "type": "panel",
   "i18n": false,
   "items": {
+    "_kartenHinweis": {
+      "type": "staticText",
+      "newLine": true,
+      "sm": 12,
+      "xs": 12,
+      "md": 12,
+      "lg": 12,
+      "xl": 12,
+      "text": {
+        "en": "The map widget is served by this adapter at /dreame/ on your web adapter — usually http://<your-iobroker>:8082/dreame/ . A ready-made link with the correct address is on the ioBroker start page and next to this instance in the adapter list.",
+        "de": "Die Karte liefert dieser Adapter unter /dreame/ über den web-Adapter aus — meist http://<deine-ioBroker-Adresse>:8082/dreame/ . Einen fertigen Link mit der richtigen Adresse gibt es auf der ioBroker-Startseite und neben dieser Instanz in der Adapterliste."
+      }
+    },
     "cloudService": {
       "type": "select",
       "options": [
