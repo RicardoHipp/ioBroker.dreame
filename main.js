@@ -3754,12 +3754,16 @@ class Dreame extends utils.Adapter {
   // nicht vor, hier ist also nichts ersetzt worden. Sie liegen jetzt in
   // lib/mapController.js und werden am Dateiende an diese Klasse geheftet — aufrufbar
   // unveraendert als this._diagFrame(...) usw.
-  async setMapInfos(In_Compressed, In_path) {
-    const jsondecode = this.uncompress(In_Compressed);
+  async setMapInfos(In_Compressed, In_path, vorgeparst) {
+    // vorgeparst: bereits entpacktes und geparstes Karten-Objekt. Damit benutzt der
+    // Nachladeweg dieses Forks (lib/mapController.js -> _applyCleansetFromInflated) diese
+    // Funktion ein zweites Mal, statt ihren Inhalt zu kopieren. Reicht man nur
+    // { cleanset: … } herein, schreibt die Schleife unten auch nur die Raum-Einstellungen.
+    const jsondecode = vorgeparst ? true : this.uncompress(In_Compressed);
     if (!jsondecode) {
       return;
     }
-    const jsonread = ((_) => {
+    const jsonread = vorgeparst || ((_) => {
       try {
         return JSON.parse(jsondecode);
       } catch (err) {
@@ -3857,16 +3861,78 @@ class Dreame extends utils.Adapter {
             if (value != null) {
               const pathMap = In_path + key + '.' + Subkey;
               if (pathMap.toString().indexOf('.cleanset') != -1) {
-                // ACHTUNG BEIM ABGLEICH MIT DEM ORIGINAL: Hier stehen dort ~78 Zeilen
-                // (Raumnamen setzen, RoomSettings/RoomOrder/Level/CleaningMode/WaterVolume/
-                // Repeat/Route/Cleaning schreiben). Die sind unveraendert nach
-                // lib/mapController.js -> _applyCleansetRoom() gewandert.
-                // Grund: Sie werden an einer ZWEITEN Stelle gebraucht — beim Nachladen des
-                // Karten-Objekts (6-3), wenn in der App eine Raum-Einstellung geaendert wird.
-                // Ohne das waeren die Werte nur so aktuell wie der letzte Kartenframe.
-                // Aendert TA2k etwas an diesen Zeilen, meldet Git hier einen Konflikt — die
-                // Aenderung muss dann in _applyCleansetRoom nachgezogen werden.
-                await this._applyCleansetRoom(In_path, key, Subkey, Subvalue);
+                const _mapDid = In_path.split('.')[0];
+                const _areaInfo = this._areaInfoByDid[_mapDid];
+                if (!_areaInfo && !this._loggedMissingAreaInfo[_mapDid]) {
+                  this._loggedMissingAreaInfo[_mapDid] = true;
+                  this.log.debug(
+                    `Room names not yet available for device ${_mapDid} - waiting for map data via getMap(). Using generic room numbers until next successful map fetch.`,
+                  );
+                }
+                const _roomResult = getRoomDisplayName(Subkey, _areaInfo ? _areaInfo[Subkey] : null);
+                let _roomName;
+                if (_roomResult.type === 'custom') {
+                  _roomName = _roomResult.value;
+                } else if (_roomResult.type === 'predefined') {
+                  const _translated = I18n.getTranslatedObject(_roomResult.nameKey);
+                  if (_roomResult.indexSuffix > 0) {
+                    _roomName = Object.fromEntries(
+                      Object.entries(_translated).map(([lang, val]) => [lang, `${val} ${_roomResult.indexSuffix}`]),
+                    );
+                  } else {
+                    _roomName = _translated;
+                  }
+                } else {
+                  _roomName = _roomResult.value;
+                }
+                await this.extendObject(pathMap, {
+                  type: 'channel',
+                  common: {
+                    name: _roomName,
+                  },
+                  native: {},
+                });
+                //this.log.info(' Long subkey ' + Subvalue.length + ' / ' + Subvalue[3]);
+                if (Subvalue.length == 6) {
+                  if (UpdateCleanset) {
+                    const did = In_path.split('.')[0];
+                    const cleansetDevice = this.deviceArray.find((d) => String(d.did) === String(did));
+                    const isMowerDevice = this.isMower(cleansetDevice);
+                    for (let i = 0; i < Subvalue.length; i += 1) {
+                      //1: DreameLevel, 2: DreameWaterVolume, 3: DreameRepeat, 4: DreameRoomNumber, 5: DreameCleaningMode, 6: Route
+                      //map-req[{"piid": 2,"value": "{\"req_type\":1,\"frame_type\":I,\"force_type\":1}"}]
+                      let pathMap = In_path + key + '.' + Subkey + '.RoomSettings';
+                      this.getType(JSON.stringify(Subvalue), pathMap);
+                      this.setState(pathMap, JSON.stringify(Subvalue), true);
+                      pathMap = In_path + key + '.' + Subkey + '.RoomOrder';
+                      this.getType(parseFloat(Subvalue[3]), pathMap);
+                      this.setState(pathMap, parseFloat(Subvalue[3]), true);
+                      if (!isMowerDevice) {
+                        pathMap = In_path + key + '.' + Subkey + '.Level';
+                        this.setcleansetPath(pathMap, DreameLevel);
+                        this.setState(pathMap, Subvalue[0], true);
+                        pathMap = In_path + key + '.' + Subkey + '.CleaningMode';
+                        this.setcleansetPath(pathMap, DreameCleaningMode);
+                        this.setState(pathMap, Subvalue[4], true);
+                        pathMap = In_path + key + '.' + Subkey + '.WaterVolume';
+                        this.setcleansetPath(pathMap, DreameWaterVolume);
+                        this.setState(pathMap, Subvalue[1], true);
+                      }
+                      pathMap = In_path + key + '.' + Subkey + '.Repeat';
+                      this.setcleansetPath(pathMap, DreameRepeat);
+                      this.setState(pathMap, Subvalue[2], true);
+                      pathMap = In_path + key + '.' + Subkey + '.Route';
+                      this.setcleansetPath(pathMap, DreameRoute);
+                      this.setState(pathMap, Subvalue[5], true);
+                      pathMap = In_path + key + '.' + Subkey + '.Cleaning';
+                      await this.setcleansetPath(pathMap, DreameRoomClean);
+                      const Cleanstates = await this.getStateAsync(pathMap);
+                      if (Cleanstates == null) {
+                        this.setStateAsync(pathMap, 0, true);
+                      }
+                    }
+                  }
+                }
               } else {
                 this.getType(Subvalue, pathMap);
                 this.setState(pathMap, JSON.stringify(Subvalue), true);
