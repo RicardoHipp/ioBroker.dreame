@@ -213,6 +213,12 @@
   :root[data-leiste="unten"] .untenrum .gruppe{margin-top:0}
   :root[data-leiste="oben"] .g-wahl,
   :root[data-leiste="unten"] .g-wahl{flex:none; width:400px}
+  /* Waagerecht volles 2x2: dort ist genug Breite, dass auch Reinigung und Modus in eine
+     halbe Zeile passen. */
+  :root[data-leiste="oben"] .wraster > :nth-child(1),
+  :root[data-leiste="oben"] .wraster > :nth-child(2),
+  :root[data-leiste="unten"] .wraster > :nth-child(1),
+  :root[data-leiste="unten"] .wraster > :nth-child(2){grid-column:auto}
   :root[data-leiste="oben"] .g-verbrauch,
   :root[data-leiste="unten"] .g-verbrauch{flex:1; min-width:260px}
   /* Der Zustandstext darf sich die freie Breite nehmen, die Meldungen sitzen in der
@@ -287,7 +293,12 @@
   .abschnitt h2{margin:0;flex:1}
   /* Die vier Auswahlkarten. Alle gleich aufgebaut, damit sie als eine Gruppe lesbar sind:
      Beschriftung oben klein, Wert darunter fett, Pfeil rechts. */
+  /* Grundform (schmale Spalte): Reinigung und Modus je ueber die volle Breite — ihre Werte
+     sind Woerter wie "Wischen nach Saugen" und brauchen Platz. Saugstufe und Wassermenge
+     teilen sich eine Zeile, da stehen nur kurze Angaben.
+     Waagerecht wird daraus weiter unten ein volles 2x2-Raster. */
   .wraster{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .wraster > :nth-child(1), .wraster > :nth-child(2){grid-column:1 / -1}
   .wkarte{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:3px;
     padding:9px 26px 9px 12px;border-radius:10px;border:1.5px solid var(--line);
     background:var(--panel);color:var(--txt);font:inherit;text-align:left;
