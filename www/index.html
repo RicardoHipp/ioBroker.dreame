@@ -1616,6 +1616,18 @@
         const o = roomOverride[id] || (roomOverride[id] = {});
         o[feld] = wert;
       }
+      // Im Einheitlich-Betrieb sofort ans Geraet — wie der Modus eine Zeile weiter oben.
+      // Die Werte in der selects-Liste des Startbefehls reichen NICHT: das Geraet nimmt
+      // dort im Einheitlich-Betrieb nur EINEN Wert (beobachtet: den des ersten Raums) und
+      // wendet ihn auf alle an. Nachgewiesen mit [[8,1,0,...],[9,1,3,...]]: beide Raeume
+      // wurden gleich laut gesaugt, und remote.suction-level stand danach auf 0.
+      // Die einheitliche Stufe ist eine eigene Geraeteeigenschaft (4-4 bzw. 28-1) — genau
+      // die, die auch die App unter "einheitlich" anbietet. Individuell pro Raum ist ein
+      // anderer Betriebszustand (4-26), dort gilt das gespeicherte cleanset.
+      if (!customizedCleaning){
+        if (feld === 'saug')   cmd('remote.suction-level', wert);
+        if (feld === 'wasser') cmd('remote.wetness-level', wert);
+      }
       updateCleanPanel();
     };
     // Die beiden Kacheln zeigen nur an; der Regler steckt im Overlay. Der uebernommene
@@ -1657,14 +1669,16 @@
       if (selectedRooms.size===0) return;
       setzeAnnahme(false);
       takeChangeSnapshot(); // Referenz für den "Änderungen"-Button: Karte beim Start merken
-      // Hier standen bis zuletzt drei Befehle vor dem Start: Modus, Saugstufe, Wassermenge.
-      // Alle drei sind weg.
-      //   Modus     -> geht jetzt beim Umstellen raus (s. modeRow), nicht mehr beim Start.
-      //   Saugstufe/Wassermenge -> waren schlicht doppelt. Die Werte je Raum stehen unten
-      //     in der Raumliste; global geschickt wurde jeweils der KLEINSTE Wert der Auswahl,
-      //     also eine Zahl, die fuer keinen der Raeume galt. HAs clean_segment schickt
-      //     ebenfalls nur die Liste und keine globalen Vorgaben.
-      // Damit ist der Start das, was er sein soll: ein einziger Befehl.
+      // Hier standen frueher drei Befehle vor dem Start: Modus, Saugstufe, Wassermenge.
+      // Alle drei gehen jetzt beim UMSTELLEN raus (s. modeRow und fuerAlle), nicht mehr
+      // beim Start. Der Start ist damit ein einziger Befehl.
+      //
+      // Achtung, die urspruengliche Begruendung war falsch: Saugstufe und Wassermenge
+      // galten hier als "schlicht doppelt", weil die Werte ja je Raum in der selects-Liste
+      // stehen und HAs clean_segment auch keine globalen Vorgaben schickt. Uebersehen war,
+      // dass HA fuer beide ein eigenes Bedienelement hat, das direkt auf die Eigenschaft
+      // schreibt — genau wie beim Modus. Ohne dieses Stueck wirkte im Einheitlich-Betrieb
+      // gar nichts mehr, weil das Geraet aus der Liste nur einen Wert nimmt.
       const gewaehlteIds = [...selectedRooms];
       const suct = Math.min(...gewaehlteIds.map(effSaug));   // nur fuer den Individuell-Fall
       const wasser = Math.min(...gewaehlteIds.map(effWasser));
