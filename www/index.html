@@ -182,6 +182,20 @@
   .statlist{display:flex;flex-direction:column;gap:5px;margin-top:8px;font-size:12.5px}
   .statlist div{display:flex;justify-content:space-between;gap:10px}
   .statlist span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
+  /* Saugstärke + Wassermenge als zwei schmale Kacheln nebeneinander. Ersetzt zwei
+     volle Reglerzeilen — spart Höhe, ohne die Werte zu verstecken. */
+  .werte{display:flex; gap:8px}
+  .wert{flex:1; display:flex; align-items:center; justify-content:center; gap:7px;
+    padding:9px 6px; border-radius:11px; cursor:pointer; transition:.12s;
+    border:1.5px solid var(--line); background:var(--panel2); color:var(--txt);
+    font:inherit; font-size:13px; font-weight:700}
+  .wert:hover:not(:disabled){border-color:var(--accent)}
+  .wert:active:not(:disabled){transform:scale(.97)}
+  .wert .ico{flex:none; opacity:.85}
+  .wert .wv{font-variant-numeric:tabular-nums; white-space:nowrap}
+  /* Gesperrt = der eingestellte Modus nutzt den Wert gar nicht (z. B. Wasser beim
+     reinen Saugen). Sichtbar bleiben, damit klar ist, dass es ihn gibt. */
+  .wert:disabled{opacity:.4; cursor:not-allowed}
   .clean{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
   .selroom{font-weight:800;font-size:14px;color:var(--accent,#4a78e0)}
   /* Auswahl-Zeile: tippt man drauf, oeffnet sich ein Overlay mit den Optionen.
@@ -312,11 +326,15 @@
           <div class="slabel" id="indivHint" style="display:none;opacity:.7">
             Jeder Raum wird nach seinen gespeicherten Einstellungen gereinigt — am Raum in der Karte ändern.
           </div>
-          <div id="globalSliders">
-            <label class="slabel">Saugstärke: <b id="suctionVal">Standard</b></label>
-            <input type="range" id="suction" min="0" max="3" step="1" value="1">
-            <label class="slabel">Wassermenge: <b id="waterVal">3</b></label>
-            <input type="range" id="water" min="1" max="32" step="1" value="3">
+          <!-- Saugstärke und Wassermenge nur als Anzeige, beide in einer Zeile. Antippen
+               öffnet den Regler im Overlay; was der Modus gar nicht nutzt, ist gesperrt. -->
+          <div id="globalSliders" class="werte">
+            <button class="wert" id="suctionTile" type="button">
+              <span class="wv" id="suctionVal">2</span>
+            </button>
+            <button class="wert" id="waterTile" type="button">
+              <span class="wv" id="waterVal">3</span>
+            </button>
           </div>
           <div class="actbtns">
             <button class="abtn start" id="c-start" title="Start" aria-label="Reinigung starten"></button>
@@ -863,16 +881,23 @@
     // Globale Regler ZEIGEN den Stand der gewaehlten Raeume: gleicher Wert -> dieser Wert,
     // unterschiedliche -> "Gemischt (min–max)". Verstellen setzt dann alle auf einmal.
     if (!customizedCleaning && gewaehlt.length){
-      const zeig = (schieber, label, werte, text) => {
-        const el=document.getElementById(schieber), lb=document.getElementById(label);
-        if(!el||!lb) return;
+      // Kurzfassung: auf den Kacheln ist nur Platz fuer den Wert, nicht fuer Wort und
+      // Spannweite. Bei unterschiedlichen Werten daher "min–max" statt "Gemischt (…)".
+      const zeig = (kachel, label, werte, text) => {
+        const lb=document.getElementById(label);
+        if(!lb) return;
         const min=Math.min(...werte), max=Math.max(...werte);
-        el.value = min; reglerFuellung(el);
-        lb.textContent = (min===max) ? text(min) : `Gemischt (${text(min)}–${text(max)})`;
+        lb.textContent = (min===max) ? text(min) : `${text(min)}–${text(max)}`;
       };
-      zeig('suction','suctionVal', gewaehlt.map(effSaug),   suctText);
-      zeig('water','waterVal',     gewaehlt.map(effWasser), (v)=>String(v));
+      zeig('suctionTile','suctionVal', gewaehlt.map(effSaug),   (v)=>String(v+1));
+      zeig('waterTile','waterVal',     gewaehlt.map(effWasser), (v)=>String(v));
     }
+    // Sperren, was der eingestellte Modus gar nicht nutzt: beim reinen Saugen gibt es
+    // keine Wassermenge, beim reinen Wischen keine Saugstaerke. Ohne Auswahl ist beides
+    // gesperrt, weil der Wert dann fuer niemanden gelten wuerde.
+    const st=document.getElementById('suctionTile'), wt=document.getElementById('waterTile');
+    if (st) st.disabled = !gewaehlt.length || !modeSaugt(cleanMode);
+    if (wt) wt.disabled = !gewaehlt.length || !modeWischt(cleanMode);
 
     // Betriebsart: entweder globale Regler ODER die Werte je Raum — nie beides,
     // denn im Individuell-Betrieb ignoriert das Geraet die globalen Werte.
@@ -916,6 +941,35 @@
       else b.onclick=()=>{ closePicker(); onPick(o.id); };
       box.appendChild(b);
     }
+    oeffneOvl();
+  }
+
+  /**
+   * Overlay mit EINEM Regler — fuer Werte mit vielen Stufen, bei denen eine Liste
+   * unbrauchbar waere (Wassermenge hat 32). Gleiches Fenster wie openPicker, nur mit
+   * Regler statt Knopfliste.
+   *
+   * Uebernommen wird beim Loslassen (change), nicht beim Ziehen: sonst ginge fuer jeden
+   * Zwischenwert ein Befehl ans Geraet.
+   *
+   * @param titel   Ueberschrift
+   * @param opt     {min, max, wert, text}  text(v) liefert die Beschriftung
+   * @param onPick  Rueckruf mit dem gewaehlten Wert
+   */
+  function openSlider(titel, opt, onPick){
+    const box=document.getElementById('pickOpts');
+    document.getElementById('pickTitle').textContent = titel;
+    document.getElementById('pickSave').style.display='none';
+    box.innerHTML='';
+    const lb=document.createElement('label');
+    lb.className='slabel'; lb.style.cssText='display:block;margin-bottom:8px;font-weight:700';
+    const inp=document.createElement('input');
+    inp.type='range'; inp.min=opt.min; inp.max=opt.max; inp.step=1; inp.value=opt.wert;
+    lb.textContent = opt.text(opt.wert);
+    inp.oninput = ()=>{ lb.textContent = opt.text(+inp.value); reglerFuellung(inp); };
+    inp.onchange = ()=>{ closePicker(); onPick(+inp.value); };
+    box.appendChild(lb); box.appendChild(inp);
+    reglerFuellung(inp);
     oeffneOvl();
   }
   /**
@@ -1087,29 +1141,27 @@
     for (const pv of document.querySelectorAll('.pickrow .pv')){
       pv.insertAdjacentHTML('beforeend', uiIcon('weiter', 16, 'chev'));
     }
+    // Symbol vor dem Wert auf den beiden Kacheln
+    for (const [id, name] of [['suctionTile','saugen'], ['waterTile','wasser']]){
+      const el = document.getElementById(id);
+      if (el) el.insertAdjacentHTML('afterbegin', uiIcon(name, 16));
+    }
     // Statistik-Kopfzeile: Symbol davor, Klapp-Pfeil dahinter (dreht sich per CSS)
     const sum = document.querySelector('.stats summary');
     if (sum){ sum.insertAdjacentHTML('afterbegin', uiIcon('statistik',14));
               sum.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev')); }
   }
   function setupCleanPanel(){
-    const suction=document.getElementById('suction'), sVal=document.getElementById('suctionVal');
-    const water=document.getElementById('water'), wVal=document.getElementById('waterVal');
     const modeRow=document.getElementById('modeRow'), modeVal=document.getElementById('modeVal');
     const applyMode=()=>{ modeVal.textContent = modeOf(cleanMode).name; };
     // updateCleanPanel mit: ob "Wasser X" am Chip steht, haengt vom gewaehlten Modus ab
     modeRow.onclick=()=> openPicker('Reinigungsmodus', CLEAN_MODES, cleanMode,
       (id)=>{ cleanMode=id; applyMode(); updateCleanPanel(); });
-    // Waehrend des Ziehens nur beschriften; beim LOSLASSEN gilt der Wert fuer alle gewaehlten
-    // Raeume (setzt deren Abweichung). Einzeln nachjustieren geht danach ueber das ⚙ am Chip.
-    suction.oninput=()=>{ sVal.textContent=suctText(+suction.value); };
-    water.oninput  =()=>{ wVal.textContent=water.value; };
-    // Fuellstand fuer JEDEN Regler mitziehen — auch fuer die erst spaeter erzeugten
-    // im Raum-Fenster, deshalb einmal zentral statt an jedem Regler einzeln.
+    // Fuellstand fuer JEDEN Regler mitziehen — auch fuer die erst im Overlay erzeugten,
+    // deshalb einmal zentral statt an jedem Regler einzeln.
     document.addEventListener('input',(e)=>{
       if (e.target && e.target.type==='range') reglerFuellung(e.target);
     }, true);
-    reglerFuellung(suction); reglerFuellung(water);
     const fuerAlle=(feld,wert)=>{
       for (const id of selectedRooms){
         const o = roomOverride[id] || (roomOverride[id] = {});
@@ -1117,8 +1169,18 @@
       }
       updateCleanPanel();
     };
-    suction.onchange=()=> fuerAlle('saug',   +suction.value);
-    water.onchange  =()=> fuerAlle('wasser', +water.value);
+    // Die beiden Kacheln zeigen nur an; der Regler steckt im Overlay. Der uebernommene
+    // Wert gilt fuer alle gewaehlten Raeume — einzeln nachjustieren geht ueber das Badge.
+    document.getElementById('suctionTile').onclick=()=>{
+      const w = [...selectedRooms].map(effSaug);
+      openSlider('Saugstärke', { min:0, max:3, wert:Math.min(...w), text:suctText },
+        (v)=> fuerAlle('saug', v));
+    };
+    document.getElementById('waterTile').onclick=()=>{
+      const w = [...selectedRooms].map(effWasser);
+      openSlider('Wassermenge', { min:1, max:32, wert:Math.min(...w), text:(v)=>String(v) },
+        (v)=> fuerAlle('wasser', v));
+    };
     // Betriebsart umschalten = Geraeteschalter 4-26. Wird sofort gesetzt, damit Widget und
     // App denselben Zustand zeigen (kein verstecktes Eigenleben bis zum Start).
     document.getElementById('custRow').onclick=()=> openPicker('Reinigung', [
