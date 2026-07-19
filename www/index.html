@@ -32,6 +32,9 @@
     /* Anzeigegroesse der Bedienflaechen (Zahnrad-Menue). Bewusst NICHT auf die Karte:
        die zoomt man selbst, und sie soll beim Laden ganz zu sehen sein. */
     --ui:1;
+    /* Groesse der Bedienleiste. Zwei Werte, weil sie nicht dasselbe meinen: senkrecht
+       zaehlt die Breite, waagerecht die Hoehe. Beide werden mit --ui multipliziert. */
+    --leiste-breite:275px; --leiste-hoehe:158px;
   }
   :root[data-farben="hell"]{
     --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
@@ -166,7 +169,7 @@
   /* Der Kasten selbst wird NICHT gezoomt — er bekommt seine Hoehe vom Flexaufbau und
      soll sie behalten. Gezoomt wird nur der Inhalt darin (.sidein). Dadurch bleiben
      Hoehe und Zoom voneinander unabhaengig; wird der Inhalt zu lang, rollt er im Kasten. */
-  .side{flex:none; width:calc(275px * var(--ui)); min-height:0; overflow-y:auto;
+  .side{flex:none; width:calc(var(--leiste-breite) * var(--ui)); min-height:0; overflow-y:auto;
     border-left:1px solid var(--trennlinie, var(--line)); background:var(--flaeche2)}
   .sidein{zoom:var(--ui); padding:16px}
   /* Lage der Bedienleiste. Der Flexaufbau macht die Anordnung, die Trennlinie muss auf
@@ -184,7 +187,7 @@
   :root[data-leiste="oben"]  .body{flex-direction:column-reverse}
   :root[data-leiste="oben"] .side,
   :root[data-leiste="unten"] .side{
-    width:auto; height:calc(158px * var(--ui)); overflow-x:auto; overflow-y:hidden;
+    width:auto; height:calc(var(--leiste-hoehe) * var(--ui)); overflow-x:auto; overflow-y:hidden;
     border-left:none; border-right:none}
   :root[data-leiste="unten"] .side{border-top:1px solid var(--trennlinie, var(--line))}
   :root[data-leiste="oben"]  .side{border-bottom:1px solid var(--trennlinie, var(--line))}
@@ -491,6 +494,12 @@
         <span class="pk">Bedienung</span>
         <span class="pv"><span id="leisteVal">Rechts</span></span>
       </div>
+      <!-- Ein Regler für zwei Werte: senkrecht stellt er die Breite, waagerecht die Höhe.
+           Beschriftung und Bereich wechseln mit der Lage (s. setzeLeistenGroesse). -->
+      <label class="slabel" style="margin-top:10px;display:block">
+        <span id="lgTitel">Breite der Bedienung</span>: <b id="lgVal">275</b> px
+      </label>
+      <input type="range" id="lgRange" min="220" max="450" step="5" value="275">
       <div class="slabel" style="opacity:.7;margin-top:6px">
         Auf schmalen Bildschirmen steht die Bedienung immer unter der Karte.
       </div>
@@ -605,6 +614,49 @@
   let hgWahl     = holeWahl('hintergrund', ['gefuellt','transparent'], 'gefuellt');
   let leisteWahl = holeWahl('leiste', LEISTE.map(l=>l.id), 'rechts');
 
+  // Groesse der Bedienleiste. Zwei getrennte Werte, weil sie nicht dasselbe meinen:
+  // senkrecht zaehlt die Breite, waagerecht die Hoehe. Ein gemeinsamer Wert wuerde beim
+  // Umschalten der Lage jedes Mal einen unsinnigen Wert erben.
+  const LG = {
+    breite: { min:220, max:450, standard:275, titel:'Breite der Bedienung', css:'--leiste-breite' },
+    hoehe:  { min:120, max:320, standard:158, titel:'Höhe der Bedienung',   css:'--leiste-hoehe' },
+  };
+  const holeZahl = (name, min, max, standard) => {
+    const a = parseInt(_par.get(name), 10);
+    if (a >= min && a <= max) return a;
+    try { const g = parseInt(localStorage.getItem('dreame.' + name), 10);
+          if (g >= min && g <= max) return g; } catch (e) {}
+    return standard;
+  };
+  const lgWert = {
+    breite: holeZahl('breite', LG.breite.min, LG.breite.max, LG.breite.standard),
+    hoehe:  holeZahl('hoehe',  LG.hoehe.min,  LG.hoehe.max,  LG.hoehe.standard),
+  };
+  /** Welcher der beiden Werte gerade gilt — haengt an der Lage der Leiste. */
+  const lgFeld = () => (leisteWahl === 'oben' || leisteWahl === 'unten') ? 'hoehe' : 'breite';
+
+  /**
+   * Setzt die Leistengroesse und richtet den Regler auf den gerade gueltigen Wert aus.
+   * @param wert   neue Groesse in px; fehlt sie, wird nur die Anzeige nachgezogen
+   * @param merken true = im Browser speichern (erst beim Loslassen)
+   */
+  function setzeLeistenGroesse(wert, merken){
+    const feld = lgFeld(), def = LG[feld];
+    if (wert != null) lgWert[feld] = Math.min(def.max, Math.max(def.min, wert));
+    // Beide Werte setzen, nicht nur den aktiven: sonst stuende beim Umschalten der Lage
+    // fuer die andere Richtung noch die Voreinstellung statt des gemerkten Werts.
+    document.documentElement.style.setProperty(LG.breite.css, lgWert.breite + 'px');
+    document.documentElement.style.setProperty(LG.hoehe.css,  lgWert.hoehe  + 'px');
+    const t = document.getElementById('lgTitel'), v = document.getElementById('lgVal');
+    const r = document.getElementById('lgRange');
+    if (t) t.textContent = def.titel;
+    if (v) v.textContent = String(lgWert[feld]);
+    if (r){ r.min = def.min; r.max = def.max; r.value = lgWert[feld]; reglerFuellung(r); }
+    if (merken){ try { localStorage.setItem('dreame.' + feld, String(lgWert[feld])); } catch (e) {} }
+    baueAdresse();
+    try { if (stage && stage.clientWidth){ fitVisible(); skaliereMarken(true); } } catch (e) {}
+  }
+
   /** Farben und Hintergrund als Attribute am Wurzelelement setzen; das CSS haengt daran. */
   function setzeAussehen(merken){
     const w = document.documentElement;
@@ -624,6 +676,9 @@
     const waagerecht = (leisteWahl === 'oben' || leisteWahl === 'unten');
     const ziel = document.querySelector(waagerecht ? '.g-steuer' : '.g-verbrauch');
     if (sBtn && ziel && sBtn.parentElement !== ziel) ziel.appendChild(sBtn);
+    // Der Groessenregler meint je nach Lage etwas anderes — Beschriftung und Bereich
+    // umstellen, ohne den Wert zu aendern.
+    setzeLeistenGroesse(null, false);
     const fv = document.getElementById('farbenVal');
     const hv = document.getElementById('hgVal');
     const lv = document.getElementById('leisteVal');
@@ -651,6 +706,8 @@
     if (farbWahl !== 'auto') p.set('farben', farbWahl);
     if (hgWahl !== 'gefuellt') p.set('hintergrund', hgWahl);
     if (leisteWahl !== 'rechts') p.set('leiste', leisteWahl);
+    if (lgWert.breite !== LG.breite.standard) p.set('breite', String(lgWert.breite));
+    if (lgWert.hoehe  !== LG.hoehe.standard)  p.set('hoehe',  String(lgWert.hoehe));
     if (uiFaktor !== 1) p.set('ui', String(Math.round(uiFaktor * 100)));
     const s = p.toString();
     feld.value = location.origin + location.pathname + (s ? '?' + s : '');
@@ -2370,6 +2427,9 @@
       (id)=>{ hgWahl = id; setzeAussehen(true); });
     document.getElementById('leisteRow').onclick = ()=> openPicker('Bedienung', LEISTE, leisteWahl,
       (id)=>{ leisteWahl = id; setzeAussehen(true); });
+    const lgR = document.getElementById('lgRange');
+    lgR.oninput  = ()=> setzeLeistenGroesse(+lgR.value, false);
+    lgR.onchange = ()=> setzeLeistenGroesse(+lgR.value, true);
     // Adresse kopieren. navigator.clipboard gibt es nur ueber HTTPS bzw. auf localhost —
     // im Heimnetz laeuft ioBroker meist ueber HTTP, deshalb der Rueckfall auf Markieren.
     const adrCopy = document.getElementById('adrCopy'), adrFeld = document.getElementById('adrFeld');
@@ -2769,8 +2829,9 @@
   (async ()=>{
     try {
       setzeIcons();
-      setzeAussehen(false);       // gemerkte Farben/Hintergrund anwenden und beschriften
-      setzeUi(uiFaktor, false);   // gemerkte Groesse anwenden und beschriften
+      // setzeAussehen ruft setzeLeistenGroesse selbst auf — daher beides in einem Zug
+      setzeAussehen(false);       // gemerkte Farben, Hintergrund, Lage und Leistengroesse
+      setzeUi(uiFaktor, false);   // gemerkte Anzeigegroesse anwenden und beschriften
       setupCleanPanel();
       if (!IOB){
         errEl.textContent = 'Kein ioBroker-Server bekannt.\n\n'
