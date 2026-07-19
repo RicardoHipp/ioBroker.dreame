@@ -91,7 +91,11 @@
   .rbadge{cursor:pointer; color:var(--txt)}
   .rbadge .pille{fill:var(--panel); stroke:var(--line); stroke-width:1; opacity:.96}
   .rbadge .hit{fill:transparent}          /* deckungsgleich mit der Pille, s. baueBadge */
-  .rbadge text{font-size:12px; font-weight:800; dominant-baseline:middle;
+  /* central statt middle: middle zentriert auf der halben x-Hoehe (Hoehe eines kleinen
+     "x", ohne Oberlaengen). Ziffern sind so hoch wie Grossbuchstaben, ihr oberer Teil
+     zaehlt dabei nicht mit — sie sassen dadurch sichtbar zu hoch neben dem Icon.
+     central zentriert auf der Mitte des Schriftkegels und passt fuer Ziffern. */
+  .rbadge text{font-size:12px; font-weight:800; dominant-baseline:central;
     fill:var(--txt); text-anchor:start; user-select:none}
   .rbadge .zr{opacity:.55}                /* Zahnrad nur andeuten */
   .stationhit{cursor:pointer}
