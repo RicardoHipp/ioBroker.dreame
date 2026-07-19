@@ -198,8 +198,6 @@
   :root[data-leiste="unten"] .gruppe{margin-top:0; flex:none; width:230px}
   :root[data-leiste="oben"] .g-steuer,
   :root[data-leiste="unten"] .g-steuer{width:190px}
-  :root[data-leiste="oben"] .g-statistik,
-  :root[data-leiste="unten"] .g-statistik{width:200px}
   /* Ueberschrift und Zahnrad der ersten Gruppe: waagerecht steht das Zahnrad sonst weit
      rechts vom Text, weil die Gruppe schmaler ist als die Spalte. */
   :root[data-leiste="oben"] .sidehead,
@@ -269,14 +267,15 @@
   .vrow.warn .vbar i{background:var(--warn,#e0a33a)}
   .vrow.bad  .vbar i{background:var(--bad,#ff5c7a)}
   .vpct{flex:none;width:34px;text-align:right;font-variant-numeric:tabular-nums;opacity:.8}
-  /* Statistik: zugeklappt, weil sie selten gebraucht wird */
-  .stats{margin-top:14px}
-  .stats summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;
-    font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
-  .stats summary::-webkit-details-marker{display:none}
-  .stats summary .sumtext{flex:1}
-  .stats summary .ico{transition:transform .15s}
-  .stats[open] summary .ico.chev{transform:rotate(180deg)}
+  /* Statistik: hinter einem Knopf statt aufklappbar. Aufgeklappt schob sie in der Spalte
+     alles nach unten, und in der waagerechten Leiste haette sie eine eigene Spalte
+     gebraucht — als Knopf passt sie unter die Aktionsknoepfe. */
+  .statsbtn{width:100%;margin-top:12px;padding:9px;border-radius:10px;cursor:pointer;
+    border:1.5px solid var(--line);background:var(--panel2);color:var(--muted);
+    font:inherit;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+    display:flex;align-items:center;justify-content:center;gap:7px;transition:.12s}
+  .statsbtn:hover{border-color:var(--accent);color:var(--txt)}
+  .statsbtn:active{transform:scale(.97)}
   .statlist{display:flex;flex-direction:column;gap:5px;margin-top:8px;font-size:12.5px}
   .statlist div{display:flex;justify-content:space-between;gap:10px}
   .statlist span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
@@ -445,17 +444,14 @@
           </div>
           <!-- Meldungen: nur sichtbar, wenn wirklich etwas anliegt (s. updateInfo) -->
           <div class="warnbox" id="warnBox" hidden></div>
+          <div id="err"></div>
         </section>
         <section class="gruppe g-verbrauch">
           <h2 id="verbrauchTitel" hidden>Verbrauchsmaterial</h2>
           <div class="verbrauch" id="verbrauch"></div>
-        </section>
-        <section class="gruppe g-statistik">
-          <details class="stats" id="statsBox" hidden>
-            <summary><span class="sumtext">Statistik</span></summary>
-            <div class="statlist" id="statList"></div>
-          </details>
-          <div id="err"></div>
+          <!-- Wird bei waagerechter Leiste nach unten zu den Aktionsknoepfen verschoben
+               (s. setzeAussehen) — dort ist Platz, und es spart eine ganze Spalte. -->
+          <button class="statsbtn" id="statsBtn" type="button" hidden>Statistik</button>
         </section>
       </div></div>
     </div>
@@ -614,6 +610,14 @@
     // "rechts" ist die Grundanordnung im CSS — dafuer braucht es kein Attribut
     if (leisteWahl === 'rechts') w.removeAttribute('data-leiste');
     else w.setAttribute('data-leiste', leisteWahl);
+    // Statistik-Knopf umhaengen: waagerecht unter die Aktionsknoepfe, wo Platz frei ist —
+    // das spart der Leiste eine ganze Spalte. Senkrecht bleibt er beim Verbrauchsmaterial,
+    // wo er thematisch hingehoert. Ein Umhaengen per CSS gibt es nicht, die beiden Ziele
+    // liegen in verschiedenen Gruppen.
+    const sBtn = document.getElementById('statsBtn');
+    const waagerecht = (leisteWahl === 'oben' || leisteWahl === 'unten');
+    const ziel = document.querySelector(waagerecht ? '.g-steuer' : '.g-verbrauch');
+    if (sBtn && ziel && sBtn.parentElement !== ziel) ziel.appendChild(sBtn);
     const fv = document.getElementById('farbenVal');
     const hv = document.getElementById('hgVal');
     const lv = document.getElementById('leisteVal');
@@ -1388,9 +1392,9 @@
       if (el) el.insertAdjacentHTML('afterbegin', uiIcon(name, 16));
     }
     // Statistik-Kopfzeile: Symbol davor, Klapp-Pfeil dahinter (dreht sich per CSS)
-    const sum = document.querySelector('.stats summary');
-    if (sum){ sum.insertAdjacentHTML('afterbegin', uiIcon('statistik',14));
-              sum.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev')); }
+    const sb = document.getElementById('statsBtn');
+    if (sb){ sb.insertAdjacentHTML('afterbegin', uiIcon('statistik',14));
+             sb.onclick = openStatistik; }
     const adr = document.querySelector('.adresse summary');
     if (adr) adr.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev'));
   }
@@ -1927,11 +1931,24 @@
     }).join('');
     document.getElementById('verbrauchTitel').hidden = !vb.innerHTML;
 
-    // --- Statistik ---
-    const sl = document.getElementById('statList');
-    sl.innerHTML = STATISTIK.filter(s => INFO.hat[s.obj] && INFO.wert[s.obj]!=null)
-      .map(s => `<div><span>${s.name}</span><span>${s.fmt(Number(INFO.wert[s.obj]))}</span></div>`).join('');
-    document.getElementById('statsBox').hidden = !sl.innerHTML;
+    // --- Statistik: nur den Knopf ein-/ausblenden, der Inhalt entsteht beim Oeffnen ---
+    document.getElementById('statsBtn').hidden = !statistikZeilen().length;
+  }
+
+  /** Die Statistik-Zeilen, die das Geraet tatsaechlich liefert. */
+  function statistikZeilen(){
+    return STATISTIK.filter(s => INFO.hat[s.obj] && INFO.wert[s.obj] != null)
+      .map(s => [s.name, s.fmt(Number(INFO.wert[s.obj]))]);
+  }
+
+  /** Statistik als Dialog. Reine Anzeige — keine Auswahl, deshalb kein openPicker. */
+  function openStatistik(){
+    const box = document.getElementById('pickOpts');
+    document.getElementById('pickTitle').textContent = 'Statistik';
+    document.getElementById('pickSave').style.display = 'none';
+    box.innerHTML = '<div class="statlist">' + statistikZeilen()
+      .map(([name, wert]) => `<div><span>${name}</span><span>${wert}</span></div>`).join('') + '</div>';
+    oeffneOvl();
   }
   // Badge-Bild in einer Icon-Gruppe setzen/entfernen (pos: 'behind'=Kreis hinter dem Icon,
   // 'corner'=klein daneben, 'above'=ueber dem Icon — wie HAs Platzierungen)
