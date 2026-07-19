@@ -3225,6 +3225,10 @@
         const modeWert = await sGet(sock, MODE_ID);
         if (modeWert != null && CLEAN_MODES.some(m => m.id === Number(modeWert))) {
           cleanMode = Number(modeWert);
+          // Beschriftung mitziehen. Sie wird sonst nur beim Umstellen gesetzt (applyMode in
+          // setupCleanPanel), und das lief hier bereits mit der Vorauswahl durch — die
+          // Zeile zeigte dann "Saugen", waehrend cleanMode laengst der Geraetewert war.
+          document.getElementById('modeVal').textContent = modeOf(cleanMode).name;
         }
         sock.emit('subscribe', MODE_ID);
         for (const id of Object.keys(rooms||{})){
