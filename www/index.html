@@ -115,7 +115,7 @@
   /* Der Kasten selbst wird NICHT gezoomt — er bekommt seine Hoehe vom Flexaufbau und
      soll sie behalten. Gezoomt wird nur der Inhalt darin (.sidein). Dadurch bleiben
      Hoehe und Zoom voneinander unabhaengig; wird der Inhalt zu lang, rollt er im Kasten. */
-  .side{flex:none; width:calc(250px * var(--ui)); min-height:0; overflow-y:auto;
+  .side{flex:none; width:calc(275px * var(--ui)); min-height:0; overflow-y:auto;
     border-left:1px solid var(--line); background:var(--panel2)}
   .sidein{zoom:var(--ui); padding:16px}
   /* Schmal (Handy): Karte oben, Bedienung darunter — dann darf die Seite rollen, statt
