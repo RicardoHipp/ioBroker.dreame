@@ -3748,11 +3748,12 @@ class Dreame extends utils.Adapter {
     }
     return decode.toString().match(/[{\[]{1}([,:{}\[\]0-9.\-+Eaeflnr-u \n\r\t]|".*?")+[}\]]{1}/gis);
   }
-  // Hier standen die Karten-Hilfsmethoden dieses Forks (_diagFrame, _propertyChanged,
-  // _deviceStatus, _mapPropertyChanged, _taskStatusChanged, _refreshMap, _writeMerged,
-  // _downloadMapB64, _checkVslamSupport). Sie liegen jetzt in lib/mapController.js und
-  // werden am Dateiende an diese Klasse geheftet — aufrufbar sind sie unveraendert als
-  // this._diagFrame(...) usw. Verschoben, damit main.js nah am Original bleibt.
+  // An dieser Stelle standen bis zum Umbau die Karten-Hilfsmethoden dieses Forks
+  // (_diagFrame, _propertyChanged, _deviceStatus, _mapPropertyChanged, _taskStatusChanged,
+  // _refreshMap, _writeMerged, _downloadMapB64, _checkVslamSupport). Sie kommen im Original
+  // nicht vor, hier ist also nichts ersetzt worden. Sie liegen jetzt in
+  // lib/mapController.js und werden am Dateiende an diese Klasse geheftet — aufrufbar
+  // unveraendert als this._diagFrame(...) usw.
   async setMapInfos(In_Compressed, In_path) {
     const jsondecode = this.uncompress(In_Compressed);
     if (!jsondecode) {
@@ -3856,6 +3857,15 @@ class Dreame extends utils.Adapter {
             if (value != null) {
               const pathMap = In_path + key + '.' + Subkey;
               if (pathMap.toString().indexOf('.cleanset') != -1) {
+                // ACHTUNG BEIM ABGLEICH MIT DEM ORIGINAL: Hier stehen dort ~78 Zeilen
+                // (Raumnamen setzen, RoomSettings/RoomOrder/Level/CleaningMode/WaterVolume/
+                // Repeat/Route/Cleaning schreiben). Die sind unveraendert nach
+                // lib/mapController.js -> _applyCleansetRoom() gewandert.
+                // Grund: Sie werden an einer ZWEITEN Stelle gebraucht — beim Nachladen des
+                // Karten-Objekts (6-3), wenn in der App eine Raum-Einstellung geaendert wird.
+                // Ohne das waeren die Werte nur so aktuell wie der letzte Kartenframe.
+                // Aendert TA2k etwas an diesen Zeilen, meldet Git hier einen Konflikt — die
+                // Aenderung muss dann in _applyCleansetRoom nachgezogen werden.
                 await this._applyCleansetRoom(In_path, key, Subkey, Subvalue);
               } else {
                 this.getType(Subvalue, pathMap);
@@ -3867,8 +3877,6 @@ class Dreame extends utils.Adapter {
       }
     }
   }
-  // Hier stand _applyCleansetRoom (Raum-Einstellungen aus dem cleanset in die States).
-  // Jetzt in lib/mapController.js — Aufruf oben in setMapInfos unveraendert.
   async setcleansetPath(createpath, CsetS) {
     //let jsonString = `{${Object.entries(CsetS).map(([key, value]) => `"${key}":"${value}"`).join(', ')}}`;
     await this.extendObject(createpath, {
@@ -4779,9 +4787,10 @@ class Dreame extends utils.Adapter {
     }
   }
 
-  // Hier standen _loadCleansetFromObject und _applyCleansetFromInflated (Karten-Objekt
-  // hinter einem object_name nachladen und die Raum-Einstellungen daraus uebernehmen).
-  // Jetzt in lib/mapController.js.
+  // An dieser Stelle standen bis zum Umbau _loadCleansetFromObject und
+  // _applyCleansetFromInflated (Karten-Objekt hinter einem object_name nachladen und die
+  // Raum-Einstellungen daraus uebernehmen). Beides kommt im Original nicht vor, hier ist
+  // also nichts ersetzt worden. Jetzt in lib/mapController.js.
   async getFile(url, device) {
     return await this.requestClient({
       method: 'post',
