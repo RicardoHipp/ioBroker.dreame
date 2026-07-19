@@ -31,6 +31,38 @@ warnings — full dust bag, empty water tank — sit next to the map.
 The widget ships with the adapter and needs no configuration. Point a browser or
 a VIS iframe at `http://<iobroker>:8082/dreame/` and it finds the robot itself.
 
+### It adapts to where you put it
+
+<img src="pics/screenshot4.jpg" alt="Settings dialog: display size, colours, background, panel position, map rotation" width="330" align="right">
+
+A wall tablet in the hallway and a browser tab on a desktop want different
+things. The gear icon opens the settings, and all of it is stored **per device**
+— your tablet can run at 145 % while the desktop stays at 100 %.
+
+**Display size** scales the whole control side from 75 % to 200 %, including the
+labels on the map and the areas you tap.
+
+**Colours** follow the device by default, or can be forced to light or dark.
+
+**Background** can be made transparent so the VIS page behind shows through —
+only the panels stay opaque, so text remains readable.
+
+**Position** puts the controls left, right, above or below the map, with an
+adjustable width or height. Above and below, the panel rearranges itself into a
+header row plus two columns instead of one tall stack.
+
+**Map rotation** turns the map in quarter turns. Room names and their badges do
+**not** turn with it — they stay upright and readable. The robot does turn, since
+its heading only makes sense relative to the map.
+
+Every setting can also be passed in the URL
+(`?farben=dunkel&hintergrund=transparent&leiste=unten`). The settings dialog
+builds the matching address for you — useful when the same widget is embedded
+twice in VIS and should look different in each view.
+
+<br clear="right">
+
+
 > ### ⚠️ Only tested with a Dreame X40 Ultra
 >
 > This fork was developed and verified against a **single device: a Dreame X40
