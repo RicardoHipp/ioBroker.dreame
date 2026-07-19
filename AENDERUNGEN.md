@@ -85,6 +85,18 @@ sofort wieder weg. Mit der Maus am PC ging es.
 und wächst mit der eingestellten Anzeigegröße mit, und ein Antippen wird nicht mehr als
 Verschieben der Karte gewertet, wenn der Finger dabei ein paar Pixel verrutscht.
 
+### Fehlermeldungen stehen im Klartext
+**Vorher:** Bei einer Meldung des Roboters stand nur „Fehler 68" — nachschlagen musste man
+selbst.
+**Jetzt:** Dort steht, worum es geht, zum Beispiel „Wischpad demontieren" oder „Der
+Frischwassertank ist nicht installiert". Die Texte sind unverändert aus der
+Home-Assistant-Integration übernommen, damit sie zu dem passen, was andere Werkzeuge
+anzeigen.
+
+Außerdem wird unterschieden: Ein Teil der Meldungen ist gar kein Defekt, sondern nur ein
+Hinweis (etwa die Erinnerung, das Wischpad abzunehmen). Die erscheinen jetzt gelb, echte
+Störungen rot.
+
 ### Die Karte lässt sich drehen
 **Jetzt:** Im Zahnrad-Menü gibt es **Karte drehen** mit 0°, 90°, 180° und 270°. Nützlich,
 wenn die Karte auf einem Wandtablett anders herum stehen soll, als der Roboter sie liefert.
