@@ -95,6 +95,21 @@ Nummer aussieht. Bei neueren Geräten muss dort aber überall eine 1 stehen — 
 Wert bringt den Ablauf durcheinander. Betrifft auch das Original; als Fehlerbericht
 formuliert.)*
 
+### Saugstärke und Wassermenge wirken jetzt wirklich
+**Vorher:** Die eingestellten Werte gingen nur im Startbefehl mit — dort steht je Raum ein
+eigener Wert. Im einheitlichen Betrieb nimmt der Roboter davon aber nur einen einzigen und
+wendet ihn auf alles an. Verstellte man die Kachel, passierte dadurch praktisch nichts.
+**Jetzt:** Der Wert geht sofort ans Gerät, sobald man ihn ändert — genau wie der
+Reinigungsmodus und genau wie in der App.
+
+### Während der Reinigung lässt sich einstellen, was auch wirklich geht
+**Vorher:** Lief eine Reinigung, waren Saugstärke und Wassermenge ausgegraut, während
+„Reinigung" und „Modus" anklickbar blieben — also genau verkehrt herum.
+**Jetzt:** Saugstärke und Wassermenge sind während der Fahrt bedienbar und wirken sofort
+auf den laufenden Auftrag. Betriebsart und Modus sind gesperrt, solange etwas läuft: Die
+legen fest, was für ein Auftrag unterwegs ist, und der Roboter würde eine Änderung
+ohnehin erst beim nächsten Mal anwenden.
+
 ### Räume heißen so, wie man sie in der App genannt hat
 **Vorher:** Räume ohne zugewiesenen Raumtyp hießen im Widget alle gleich, nämlich schlicht
 „Raum" — bei mehreren neuen Räumen konnte man sie nicht auseinanderhalten. Ein selbst

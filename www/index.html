@@ -1009,6 +1009,11 @@
   // Gehen im selects-Feld mit und veraendern nichts dauerhaft. HA kann das genauso
   // (clean_segment nimmt suction_level/water_volume auch als Liste je Raum).
   const roomOverride = {};
+  // Die einheitliche Saugstufe/Feuchtigkeit, wie das Geraet sie meldet (4-4 und 28-1).
+  // Sie gilt im Einheitlich-Betrieb fuer den ganzen Auftrag — auch fuer den laufenden,
+  // deshalb laesst sie sich waehrend der Fahrt aendern. Wird beim Verbinden gelesen und
+  // abonniert, damit eine Aenderung in der App hier ankommt.
+  let globalSaug = 1, globalWasser = 3;
   // Der Wert, mit dem ein Raum tatsaechlich gereinigt wird: Abweichung, sonst der am Geraet
   // gespeicherte cleanset-Wert. Damit gibt es EINE Wahrheit — die globalen Regler zeigen sie
   // nur an (bzw. "Gemischt", wenn die gewaehlten Raeume verschieden sind).
@@ -1311,7 +1316,11 @@
 
     // Globale Regler ZEIGEN den Stand der gewaehlten Raeume: gleicher Wert -> dieser Wert,
     // unterschiedliche -> "Gemischt (min–max)". Verstellen setzt dann alle auf einmal.
-    if (!customizedCleaning && gewaehlt.length){
+    // Waehrend einer Fahrt gibt es keine Auswahl mehr (sie wird beim Start geleert), aber
+    // die einheitlichen Werte gelten weiter und lassen sich live nachstellen. Dann zeigen
+    // die Kacheln, was das Geraet meldet, statt eines Werts aus der leeren Auswahl.
+    const laeuft = geraetGestartet();
+    if (!customizedCleaning && (gewaehlt.length || laeuft)){
       // Auf den beiden Kompaktkarten steht nur die Zahl — das Wort dazu sieht man im
       // Dialog. Weichen die gewaehlten Raeume voneinander ab, steht dort "min–max".
       const zeig = (label, werte, text) => {
@@ -1320,17 +1329,19 @@
         const min=Math.min(...werte), max=Math.max(...werte);
         lb.textContent = (min===max) ? text(min) : `${text(min)}–${text(max)}`;
       };
-      zeig('suctionVal', gewaehlt.map(effSaug),   (v)=>String(v+1));
-      zeig('waterVal',   gewaehlt.map(effWasser), (v)=>String(v));
+      zeig('suctionVal', gewaehlt.length ? gewaehlt.map(effSaug)   : [globalSaug],   (v)=>String(v+1));
+      zeig('waterVal',   gewaehlt.length ? gewaehlt.map(effWasser) : [globalWasser], (v)=>String(v));
     }
     // Sperren, was der eingestellte Modus gar nicht nutzt: beim reinen Saugen gibt es
-    // keine Wassermenge, beim reinen Wischen keine Saugstaerke. Ohne Auswahl ist beides
-    // gesperrt, weil der Wert dann fuer niemanden gelten wuerde.
+    // keine Wassermenge, beim reinen Wischen keine Saugstaerke.
+    // Ohne Auswahl UND ohne laufenden Auftrag ist beides gesperrt — der Wert wuerde dann
+    // fuer niemanden gelten. Laeuft dagegen etwas, sind sie offen: Saugstufe und Naesse
+    // wirken sofort auf den laufenden Auftrag, so wie in der App.
     // Im Individuell-Betrieb gelten die globalen Werte ohnehin nicht (das Geraet nimmt
-    // dann das, was am Raum gespeichert ist) — dann sind alle drei gesperrt.
+    // dann das, was am Raum gespeichert ist) — dann sind sie gesperrt.
     const st=document.getElementById('suctionTile'), wt=document.getElementById('waterTile');
-    if (st) st.disabled = customizedCleaning || !gewaehlt.length || !modeSaugt(cleanMode);
-    if (wt) wt.disabled = customizedCleaning || !gewaehlt.length || !modeWischt(cleanMode);
+    if (st) st.disabled = customizedCleaning || !(gewaehlt.length || laeuft) || !modeSaugt(cleanMode);
+    if (wt) wt.disabled = customizedCleaning || !(gewaehlt.length || laeuft) || !modeWischt(cleanMode);
 
     // Betriebsart: entweder globale Regler ODER die Werte je Raum — nie beides,
     // denn im Individuell-Betrieb ignoriert das Geraet die globalen Werte.
@@ -1338,9 +1349,16 @@
     if (cv) cv.textContent = customizedCleaning ? 'Individuell pro Raum' : 'Einheitlich';
     // Der Modus gilt im Individuell-Betrieb ebenfalls nicht. Gesperrt statt ausgeblendet,
     // sonst springt das Raster in der Groesse. (Saugstufe und Wassermenge weiter oben.)
+    // Waehrend einer Fahrt sind Betriebsart und Modus gesperrt: sie legen fest, WAS fuer ein
+    // Auftrag laeuft, und den kann man nicht mittendrin umdeuten. Das Geraet nimmt den
+    // neuen Modus zwar an, wendet ihn aber erst auf den naechsten Auftrag an — der Roboter
+    // fuhre also weiter wie bisher, waehrend das Widget etwas anderes anzeigt.
+    // Saugstufe und Wassermenge sind der andere Fall und bleiben offen (weiter oben).
     const ih=document.getElementById('indivHint');
     const mr=document.getElementById('modeRow');
-    if (mr) mr.disabled = customizedCleaning;
+    const cr=document.getElementById('custRow');
+    if (mr) mr.disabled = customizedCleaning || laeuft;
+    if (cr) cr.disabled = laeuft;
     if (ih) ih.style.display = customizedCleaning ? '' : 'none';
     // Die Badges zeigen dieselben Werte — hier und nicht in updateLabels(), weil sich der
     // Inhalt auch OHNE Auswahlwechsel aendert: Modus, Betriebsart, globale Regler, und
@@ -1632,14 +1650,17 @@
     };
     // Die beiden Kacheln zeigen nur an; der Regler steckt im Overlay. Der uebernommene
     // Wert gilt fuer alle gewaehlten Raeume — einzeln nachjustieren geht ueber das Badge.
+    // Ohne Auswahl (also waehrend einer Fahrt) steht der Regler auf dem Wert, den das
+    // Geraet meldet. Math.min() einer leeren Liste waere Infinity — der Regler landete
+    // am Anschlag und schriebe beim Zumachen einen Unsinnswert zurueck.
     document.getElementById('suctionTile').onclick=()=>{
       const w = [...selectedRooms].map(effSaug);
-      openSlider('Saugstärke', { min:0, max:3, wert:Math.min(...w), text:suctText },
+      openSlider('Saugstärke', { min:0, max:3, wert: w.length ? Math.min(...w) : globalSaug, text:suctText },
         (v)=> fuerAlle('saug', v));
     };
     document.getElementById('waterTile').onclick=()=>{
       const w = [...selectedRooms].map(effWasser);
-      openSlider('Wassermenge', { min:1, max:32, wert:Math.min(...w), text:(v)=>String(v) },
+      openSlider('Wassermenge', { min:1, max:32, wert: w.length ? Math.min(...w) : globalWasser, text:(v)=>String(v) },
         (v)=> fuerAlle('wasser', v));
     };
     // Betriebsart umschalten = Geraeteschalter 4-26. Wird sofort gesetzt, damit Widget und
@@ -3266,6 +3287,16 @@
           document.getElementById('modeVal').textContent = modeOf(cleanMode).name;
         }
         sock.emit('subscribe', MODE_ID);
+        // Einheitliche Saugstufe und Feuchtigkeit: dieselbe Geraeteeigenschaft, die die App
+        // unter "einheitlich" anbietet. Wir lesen sie, weil die Kacheln waehrend einer
+        // Fahrt keinen gewaehlten Raum mehr haben, aus dem sie ihren Wert ziehen koennten —
+        // und weil eine Aenderung in der App sonst unbemerkt bliebe.
+        const SUCT_ID = `dreame.0.${DID}.remote.suction-level`;
+        const WET_ID  = `dreame.0.${DID}.remote.wetness-level`;
+        const sWert = await sGet(sock, SUCT_ID); if (sWert != null) globalSaug   = Number(sWert);
+        const wWert = await sGet(sock, WET_ID);  if (wWert != null) globalWasser = Number(wWert);
+        sock.emit('subscribe', SUCT_ID);
+        sock.emit('subscribe', WET_ID);
         for (const id of Object.keys(rooms||{})){
           const v = await sGet(sock, `dreame.0.${DID}.map.cleanset.${id}.RoomSettings`);
           if (typeof v === 'string') { try { roomCleanset[id] = JSON.parse(v); } catch(e){} }
@@ -3303,6 +3334,8 @@
             document.getElementById('modeVal').textContent = modeOf(cleanMode).name;
             updateCleanPanel();
           }
+          else if (id===SUCT_ID && st.val!=null){ globalSaug   = Number(st.val); updateCleanPanel(); }
+          else if (id===WET_ID  && st.val!=null){ globalWasser = Number(st.val); updateCleanPanel(); }
           else if (CS_RE.test(id)){
             const rid = id.match(CS_RE)[1];
             if (typeof st.val === 'string'){ try { roomCleanset[rid] = JSON.parse(st.val); updateCleanPanel(); } catch(e){} }
