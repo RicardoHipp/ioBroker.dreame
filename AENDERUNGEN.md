@@ -85,6 +85,20 @@ sofort wieder weg. Mit der Maus am PC ging es.
 und wächst mit der eingestellten Anzeigegröße mit, und ein Antippen wird nicht mehr als
 Verschieben der Karte gewertet, wenn der Finger dabei ein paar Pixel verrutscht.
 
+### Farben und Hintergrund lassen sich einstellen
+**Vorher:** Hell oder dunkel richtete sich immer nach dem Gerät, der Hintergrund war
+immer gefüllt.
+**Jetzt:** Im Zahnrad-Menü gibt es **Farben** (Automatisch, Hell, Dunkel) und
+**Hintergrund** (Gefüllt, Transparent). Transparent heißt: der Hintergrund der VIS-Seite
+scheint durch, nur Dialoge, Kacheln und die Karte selbst bleiben deckend.
+
+Beides merkt sich jedes Gerät für sich, wie schon die Anzeigegröße.
+
+Wer das Widget in VIS **mehrfach** einbetten will — etwa hell in einer Ansicht und dunkel
+in einer anderen — kann die Einstellungen an die Adresse hängen. Dafür gibt es unten im
+Zahnrad-Menü den aufklappbaren Punkt „Adresse mit diesen Einstellungen" mit einer fertigen
+Adresse zum Kopieren. Werte in der Adresse haben Vorrang vor den gespeicherten.
+
 ### Mehr Platz für die Karte
 **Vorher:** Über der Karte lag eine Titelzeile, die nur den Namen des Widgets zeigte.
 **Jetzt:** Die Zeile ist weg, die Karte bekommt die Höhe. Der Name des Roboters steht

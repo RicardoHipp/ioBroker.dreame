@@ -6,20 +6,41 @@
 <!-- Nur der Ausgangstext; sobald das Geraet bekannt ist, wird daraus "Map – <Name>" -->
 <title>Map</title>
 <style>
+  /* ===== Farben =====
+     Dunkel ist die Grundlage. Hell gilt in zwei Faellen: ausdruecklich gewaehlt
+     (data-farben="hell") oder vom Geraet gemeldet, solange nichts gewaehlt ist. Deshalb
+     steht der helle Satz zweimal — reines CSS kann ihn nicht wiederverwenden.
+     data-farben="dunkel" braucht keinen eigenen Block: dann greift die Geraeteabfrage
+     unten nicht mehr, und die Grundlage hier steht. */
   :root{
     --bg:#0f1420; --panel:#171e2e; --panel2:#1d2740; --line:#2a3550;
     --txt:#e6ecf7; --muted:#8ea0c0; --accent:#2bb4e2;
-    --robot:#ff5c7a; --charger:#38e29b; --map-bg:#0c1020;
+    --robot:#ff5c7a; --charger:#38e29b;
     /* Ampel fuer Verbrauchsmaterial und Meldungen */
     --ok:#38e29b; --warn:#e0a33a; --bad:#ff5c7a;
+    /* Grossflaechiger Untergrund — getrennt von --panel, damit "transparent" NUR die
+       Flaeche durchsichtig macht und nicht auch Dialoge, Kacheln und Kartenmarken. */
+    --flaeche:var(--panel); --flaeche2:var(--panel2);
+    --schleier:radial-gradient(circle at 50% 40%, rgba(43,180,226,.06), transparent 60%);
     /* Anzeigegroesse der Bedienflaechen (Zahnrad-Menue). Bewusst NICHT auf die Karte:
        die zoomt man selbst, und sie soll beim Laden ganz zu sehen sein. */
     --ui:1;
   }
+  :root[data-farben="hell"]{
+    --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
+    --txt:#1a2436; --muted:#5a6b88;
+    --ok:#1a9e6b; --warn:#b57611; --bad:#d92f52;
+  }
   @media (prefers-color-scheme: light){
-    :root{ --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
-           --txt:#1a2436; --muted:#5a6b88; --map-bg:#eaf0f8;
+    :root:not([data-farben]){ --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
+           --txt:#1a2436; --muted:#5a6b88;
            --ok:#1a9e6b; --warn:#b57611; --bad:#d92f52; }
+  }
+  /* Durchsichtig: der VIS-Hintergrund scheint durch. Bauteile bleiben deckend, sonst
+     laege fremder Inhalt unter dem Text. Der Schleier hinter der Karte muss weg, sonst
+     bleibt ein blauer Schimmer stehen. */
+  :root[data-hintergrund="transparent"]{
+    --bg:transparent; --flaeche:transparent; --flaeche2:transparent; --schleier:none;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
@@ -30,7 +51,7 @@
      Es gibt bewusst KEINE Kopfzeile mehr: sie kostete Hoehe fuer eine Zeile, die nichts
      Bedienbares enthielt. Geraetename und Verbindung stehen jetzt auf der Karte, das
      Zahnrad neben der Ueberschrift der Bedienspalte. */
-  .app{width:100%; height:100%; background:var(--panel); overflow:hidden;
+  .app{width:100%; height:100%; background:var(--flaeche); overflow:hidden;
     display:flex; flex-direction:column;}
   /* Beschriftung ueber der Karte (Geraetename links, Verbindung rechts). Schwebt ueber
      dem Bild, nimmt also keine Hoehe weg. */
@@ -55,6 +76,17 @@
   .gear.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   #gearOvl h2{margin-top:16px}
   #gearOvl h2:first-of-type{margin-top:0}
+  /* Adresse zum Kopieren: zugeklappt, weil sie nur beim Einbetten in VIS gebraucht wird */
+  .adresse{margin-top:12px}
+  .adresse summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;
+    font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+  .adresse summary::-webkit-details-marker{display:none}
+  .adresse summary .sumtext{flex:1}
+  .adresse[open] summary .ico.chev{transform:rotate(180deg)}
+  .adresse summary .ico{transition:transform .15s}
+  .adrtext{font-size:12px;line-height:1.45;color:var(--muted);margin:8px 0}
+  .adresse input{width:100%;padding:9px 10px;border-radius:9px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--txt);font:inherit;font-size:12px;margin-bottom:8px}
   /* Karte und Bedienspalte nebeneinander, beide auf voller Hoehe.
      KEINE Prozenthoehen hier drin: die brauchen einen bestimmten Bezugswert, und den gab
      es nicht — daher endete die Spalte mitten im Bild. Stattdessen streckt der Flexaufbau
@@ -63,7 +95,7 @@
      Die Breite der Spalte muss mit --ui wachsen, weil ihr Inhalt gezoomt ist. */
   .body{flex:1; min-height:0; display:flex; align-items:stretch}
   .stage{flex:1; min-width:0; position:relative; overflow:hidden;
-    background:radial-gradient(circle at 50% 40%, rgba(43,180,226,.06), transparent 60%);
+    background:var(--schleier);
     touch-action:none;}
   /* KEIN will-change:transform hier! Das sagt dem Browser "dieses Element wird bewegt,
      leg es in eine GPU-Ebene und behalte das gerasterte Bild". Beim Zoomen skaliert er dann
@@ -115,7 +147,7 @@
      soll sie behalten. Gezoomt wird nur der Inhalt darin (.sidein). Dadurch bleiben
      Hoehe und Zoom voneinander unabhaengig; wird der Inhalt zu lang, rollt er im Kasten. */
   .side{flex:none; width:calc(275px * var(--ui)); min-height:0; overflow-y:auto;
-    border-left:1px solid var(--line); background:var(--panel2)}
+    border-left:1px solid var(--line); background:var(--flaeche2)}
   .sidein{zoom:var(--ui); padding:16px}
   /* Schmal (Handy): Karte oben, Bedienung darunter — dann darf die Seite rollen, statt
      alles in die Fensterhoehe zu quetschen. */
@@ -360,6 +392,24 @@
       </div>
       <label class="slabel">Anzeigegröße: <b id="uiVal">100 %</b></label>
       <input type="range" id="uiRange" min="100" max="200" step="5" value="100">
+      <div class="pickrow" id="farbenRow" style="margin-top:12px">
+        <span class="pk">Farben</span>
+        <span class="pv"><span id="farbenVal">Automatisch</span></span>
+      </div>
+      <div class="pickrow" id="hgRow">
+        <span class="pk">Hintergrund</span>
+        <span class="pv"><span id="hgVal">Gefüllt</span></span>
+      </div>
+      <details class="adresse" id="adrBox">
+        <summary><span class="sumtext">Adresse mit diesen Einstellungen</span></summary>
+        <p class="adrtext">
+          Die Einstellungen oben gelten nur in <b>diesem Browser</b>. Wer das Widget in VIS
+          zweimal einbetten will — etwa hell in einer Ansicht und dunkel in einer anderen —
+          kann sie stattdessen an die Adresse hängen. Werte in der Adresse haben Vorrang.
+        </p>
+        <input type="text" id="adrFeld" readonly>
+        <button class="ovlclose" id="adrCopy">Adresse kopieren</button>
+      </details>
       <h2 style="margin-top:16px">Räume</h2>
       <div class="roomlist" id="roomList"></div>
       <button class="ovlclose" id="gearClose">Schließen</button>
@@ -423,13 +473,77 @@
   }
   if (DID) baueIds();
 
-  // ---- Anzeigegroesse der Bedienflaechen ----
-  // Bewusst im Browser gemerkt und nicht im Adapter: das Tablett braucht eine andere
-  // Groesse als der Rechner am Schreibtisch. Die Einstellung gehoert also zum Geraet.
+  // ---- Aussehen: Anzeigegroesse, Farben, Hintergrund ----
+  //
+  // Alle drei sind Geschmacks- und Geraetesache, nicht Sache des Adapters: das Wandtablett
+  // braucht andere Werte als der Rechner am Schreibtisch. Deshalb im Browser gemerkt.
+  //
+  // Zusaetzlich per Adresse setzbar (?farben=dunkel&hintergrund=transparent&ui=150). Das
+  // ist fuer VIS gedacht: zwei Ansichten teilen sich denselben Browserspeicher, koennen
+  // das Widget aber unterschiedlich einbetten wollen. Reihenfolge: Adresse, dann
+  // Gemerktes, dann Voreinstellung.
+  const holeWahl = (name, erlaubt, standard) => {
+    const ausAdresse = (_par.get(name) || '').toLowerCase();
+    if (erlaubt.includes(ausAdresse)) return ausAdresse;
+    try {
+      const gemerkt = localStorage.getItem('dreame.' + name);
+      if (erlaubt.includes(gemerkt)) return gemerkt;
+    } catch (e) {}
+    return standard;
+  };
+
+  const FARBEN = [
+    { id:'auto',   name:'Automatisch', desc:'Folgt der Einstellung des Geräts' },
+    { id:'hell',   name:'Hell',        desc:'Immer heller Hintergrund' },
+    { id:'dunkel', name:'Dunkel',      desc:'Immer dunkler Hintergrund' },
+  ];
+  const HINTERGRUND = [
+    { id:'gefuellt',    name:'Gefüllt',     desc:'Eigene Hintergrundfarbe' },
+    { id:'transparent', name:'Transparent', desc:'Der Hintergrund der Seite scheint durch — für VIS' },
+  ];
+  let farbWahl = holeWahl('farben', ['auto','hell','dunkel'], 'auto');
+  let hgWahl   = holeWahl('hintergrund', ['gefuellt','transparent'], 'gefuellt');
+
+  /** Farben und Hintergrund als Attribute am Wurzelelement setzen; das CSS haengt daran. */
+  function setzeAussehen(merken){
+    const w = document.documentElement;
+    // "auto" = Attribut weglassen, dann greift die Geraeteabfrage im CSS
+    if (farbWahl === 'auto') w.removeAttribute('data-farben');
+    else w.setAttribute('data-farben', farbWahl);
+    if (hgWahl === 'transparent') w.setAttribute('data-hintergrund', 'transparent');
+    else w.removeAttribute('data-hintergrund');
+    const fv = document.getElementById('farbenVal');
+    const hv = document.getElementById('hgVal');
+    if (fv) fv.textContent = (FARBEN.find(f=>f.id===farbWahl)||FARBEN[0]).name;
+    if (hv) hv.textContent = (HINTERGRUND.find(h=>h.id===hgWahl)||HINTERGRUND[0]).name;
+    if (merken){
+      try { localStorage.setItem('dreame.farben', farbWahl);
+            localStorage.setItem('dreame.hintergrund', hgWahl); } catch (e) {}
+    }
+    baueAdresse();
+  }
+
+  /** Adresse mit den aktuellen Einstellungen — zum Einbetten in VIS. */
+  function baueAdresse(){
+    const feld = document.getElementById('adrFeld');
+    if (!feld) return;
+    const p = new URLSearchParams();
+    if (DID) p.set('did', DID);
+    if (farbWahl !== 'auto') p.set('farben', farbWahl);
+    if (hgWahl !== 'gefuellt') p.set('hintergrund', hgWahl);
+    if (uiFaktor !== 1) p.set('ui', String(Math.round(uiFaktor * 100)));
+    const s = p.toString();
+    feld.value = location.origin + location.pathname + (s ? '?' + s : '');
+  }
+
   const UI_MIN = 1, UI_MAX = 2;
   let uiFaktor = 1;
-  try { const g = parseFloat(localStorage.getItem('dreame.ui'));
-        if (g >= UI_MIN && g <= UI_MAX) uiFaktor = g; } catch (e) {}
+  {
+    const ausAdresse = parseFloat(_par.get('ui'));
+    if (ausAdresse >= 100 && ausAdresse <= 200) uiFaktor = ausAdresse / 100;
+    else { try { const g = parseFloat(localStorage.getItem('dreame.ui'));
+                 if (g >= UI_MIN && g <= UI_MAX) uiFaktor = g; } catch (e) {} }
+  }
   function setzeUi(f, merken){
     uiFaktor = Math.min(UI_MAX, Math.max(UI_MIN, f));
     f = uiFaktor;
@@ -440,6 +554,7 @@
     if (r){ if (+r.value !== Math.round(f*100)) r.value = Math.round(f*100);
             reglerFuellung(r); }
     if (merken) { try { localStorage.setItem('dreame.ui', String(f)); } catch (e) {} }
+    baueAdresse();
     // Die Karte hat jetzt anders viel Platz — Ausschnitt neu einpassen, Marken nachziehen.
     // Beim ersten Aufruf steht die Karte noch nicht; das faengt der Versuch ab.
     try { if (stage && stage.clientWidth){ fitVisible(); skaliereMarken(true); } }
@@ -1166,6 +1281,8 @@
     const sum = document.querySelector('.stats summary');
     if (sum){ sum.insertAdjacentHTML('afterbegin', uiIcon('statistik',14));
               sum.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev')); }
+    const adr = document.querySelector('.adresse summary');
+    if (adr) adr.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev'));
   }
   function setupCleanPanel(){
     const modeRow=document.getElementById('modeRow'), modeVal=document.getElementById('modeVal');
@@ -2111,6 +2228,26 @@
     uiR.oninput  = ()=> setzeUi(+uiR.value/100, false);
     uiR.onchange = ()=> setzeUi(+uiR.value/100, true);
     reglerFuellung(uiR);
+    // Farben und Hintergrund
+    document.getElementById('farbenRow').onclick = ()=> openPicker('Farben', FARBEN, farbWahl,
+      (id)=>{ farbWahl = id; setzeAussehen(true); });
+    document.getElementById('hgRow').onclick = ()=> openPicker('Hintergrund', HINTERGRUND, hgWahl,
+      (id)=>{ hgWahl = id; setzeAussehen(true); });
+    // Adresse kopieren. navigator.clipboard gibt es nur ueber HTTPS bzw. auf localhost —
+    // im Heimnetz laeuft ioBroker meist ueber HTTP, deshalb der Rueckfall auf Markieren.
+    const adrCopy = document.getElementById('adrCopy'), adrFeld = document.getElementById('adrFeld');
+    adrCopy.onclick = async ()=>{
+      const alt = adrCopy.textContent;
+      try {
+        if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(adrFeld.value);
+        else { adrFeld.select(); document.execCommand('copy'); }
+        adrCopy.textContent = 'Kopiert';
+      } catch (e) {
+        adrFeld.select();
+        adrCopy.textContent = 'Bitte von Hand kopieren';
+      }
+      setTimeout(()=>{ adrCopy.textContent = alt; }, 2000);
+    };
     setupToggle('t-trail','trail-off');
     // "Änderungen": kein CSS-Toggle, sondern Neuzeichnen (rot = seit Schnappschuss geändert)
     document.getElementById('t-changes').addEventListener('click', () => {
@@ -2495,6 +2632,7 @@
   (async ()=>{
     try {
       setzeIcons();
+      setzeAussehen(false);       // gemerkte Farben/Hintergrund anwenden und beschriften
       setzeUi(uiFaktor, false);   // gemerkte Groesse anwenden und beschriften
       setupCleanPanel();
       if (!IOB){
@@ -2520,6 +2658,7 @@
             return;
           }
           baueIds();
+          baueAdresse();   // jetzt erst steht die Geraete-ID fuer die Adresse fest
         }
         // Geraetename fuer die Beschriftung links oben auf der Karte. Der steht im
         // Adapter-Objekt (z. B. "X40 Ultra Complete"), nicht in einem Zustand.
