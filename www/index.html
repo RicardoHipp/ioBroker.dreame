@@ -22,6 +22,10 @@
        Flaeche durchsichtig macht und nicht auch Dialoge, Kacheln und Kartenmarken. */
     --flaeche:var(--panel); --flaeche2:var(--panel2);
     --schleier:radial-gradient(circle at 50% 40%, rgba(43,180,226,.06), transparent 60%);
+    /* Hauch fuer die Bedienspalte im transparenten Betrieb: sie soll sich weiterhin
+       leicht von der Karte absetzen, ohne den VIS-Hintergrund zu verdecken. Dunkel im
+       dunklen Satz, hell im hellen — sonst wirkt es je nach Untergrund wie ein Fleck. */
+    --hauch:rgba(0,0,0,.28);
     /* Anzeigegroesse der Bedienflaechen (Zahnrad-Menue). Bewusst NICHT auf die Karte:
        die zoomt man selbst, und sie soll beim Laden ganz zu sehen sein. */
     --ui:1;
@@ -30,17 +34,21 @@
     --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
     --txt:#1a2436; --muted:#5a6b88;
     --ok:#1a9e6b; --warn:#b57611; --bad:#d92f52;
+    --hauch:rgba(255,255,255,.45);
   }
   @media (prefers-color-scheme: light){
     :root:not([data-farben]){ --bg:#eef2f8; --panel:#ffffff; --panel2:#f4f7fc; --line:#dbe3ef;
            --txt:#1a2436; --muted:#5a6b88;
-           --ok:#1a9e6b; --warn:#b57611; --bad:#d92f52; }
+           --ok:#1a9e6b; --warn:#b57611; --bad:#d92f52;
+           --hauch:rgba(255,255,255,.45); }
   }
   /* Durchsichtig: der VIS-Hintergrund scheint durch. Bauteile bleiben deckend, sonst
      laege fremder Inhalt unter dem Text. Der Schleier hinter der Karte muss weg, sonst
-     bleibt ein blauer Schimmer stehen. */
+     bleibt ein blauer Schimmer stehen.
+     Die Bedienspalte bekommt statt voller Durchsicht den Hauch von oben — sie soll sich
+     wie bisher leicht abheben, sonst schwimmen die Bedienelemente frei im VIS. */
   :root[data-hintergrund="transparent"]{
-    --bg:transparent; --flaeche:transparent; --flaeche2:transparent; --schleier:none;
+    --bg:transparent; --flaeche:transparent; --flaeche2:var(--hauch); --schleier:none;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
