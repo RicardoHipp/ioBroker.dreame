@@ -24,16 +24,14 @@ try {
 }
 
 const { decodeMultiMapData } = require('./lib/dreame');
-const { MapMerger } = require('./lib/mapMerge');
-const { deviceStatusFlags } = require('./lib/haMap');
 // Karten-Steuerung dieses Forks. Liegt bewusst in einer eigenen Datei, damit main.js so
 // nah wie moeglich am Original von TA2k bleibt und ein Abgleich mit neuen Versionen
 // moeglichst konfliktfrei laeuft. Die Methoden werden unten an die Adapter-Klasse
 // geheftet und verhalten sich dadurch exakt wie zuvor.
 //
 // Mit umgezogen sind auch die zugehoerigen Konstanten (PROP_STATE, PROP_TASK_STATUS, …)
-// und die Einbindungen von zlib, readHeader/HEADER_SIZE, DreameVacuumTaskStatus und
-// getRoomDisplayName — sie wurden hier nur noch von den verschobenen Methoden gebraucht.
+// und die Einbindungen von zlib, mapMerge und haMap — sie wurden hier nur noch von den
+// verschobenen Methoden gebraucht.
 const mapController = require('./lib/mapController');
 
 const { getRoomDisplayName, buildSegmentTypeMap } = require('./lib/cleanset');
@@ -3384,127 +3382,15 @@ class Dreame extends utils.Adapter {
               // value is normally a base64-url string; only stringify if it isn't
               const encode = typeof element.value === 'string' ? element.value : JSON.stringify(element.value);
               const mappath = `${did}` + '.map.';
-              // P-Frame-Live-Overlay nur wenn aktiviert (siehe this.mergePFrames).
-              if (this.mergePFrames) {
-                this._diagFrame('MQTT-6-1', encode);
-                try {
-                  if (!this.mapMerger) {
-                    this.mapMerger = new MapMerger({ log: this.log });
-                    // Geraete-Faehigkeiten wie HA (types.py):
-                    //   3105: lidar_navigation = get_property(MAP_SAVING) is None
-                    //         MAP_SAVING = siid 13 / piid 1 (types.py 1714) -> bei uns:
-                    //         Eigenschaft existiert nicht in der Geraete-Spec.
-                    //   3243: object_shift = lidar_navigation and "p20" in model
-                    const capDev = this.deviceArray.find((d) => String(d.did) === String(did));
-                    const lidarNavigation = !(this.specPropsToIdDict[did] && this.specPropsToIdDict[did]['13-1']);
-                    const objectShift = lidarNavigation && String((capDev && capDev.model) || '').includes('p20');
-                    this.mapMerger.setCapability({ lidarNavigation, objectShift });
-                    this._checkVslamSupport(did, lidarNavigation, capDev && capDev.model);
-                  }
-                  // Geraetestatus fuer HAs Render-Vorverarbeitung (device.py self.status.*) —
-                  // synchron aus dem Eigenschaftsspeicher, nicht aus der State-Datenbank.
-                  this.mapMerger.setDeviceStatus(this._deviceStatus(did));
-                  const merged = this.mapMerger.process(encode);
-                  if (merged) await this._writeMerged(did, merged);
-                  // Kleine Frame-Luecke: fehlenden P-Frame GEZIELT nachfordern
-                  // (HA _request_missing_p_map: {"map_id","req_type":1,"frame_id","frame_type":"P"},
-                  //  max. 1x/3s je map/frame)
-                  if (this.mapMerger.requestPFrame) {
-                    const rq = this.mapMerger.requestPFrame;
-                    this.mapMerger.requestPFrame = null;
-                    const rqKey = `${rq.mapId}:${rq.frameId}`;
-                    const nowP = Date.now();
-                    if (this._lastPReqKey !== rqKey || !this._lastPReqTime || nowP - this._lastPReqTime > 3000) {
-                      this._lastPReqKey = rqKey;
-                      this._lastPReqTime = nowP;
-                      this.log.debug(`[MERGE] fordere fehlenden P-Frame an: map=${rq.mapId} frame=${rq.frameId}`);
-                      this.sendCommand({
-                        did: did,
-                        method: 'action',
-                        params: {
-                          did: did,
-                          siid: 6,
-                          aiid: 1,
-                          in: [{ piid: 2, value: JSON.stringify({ map_id: rq.mapId, req_type: 1, frame_id: rq.frameId, frame_type: 'P' }) }],
-                        },
-                      })
-                        .then(async (rm) => {
-                          // Antwort wie HA _request_next_p_map auswerten: der fehlende Frame
-                          // kommt als piid 1 (Rohdaten) oder piid 3 (object_name) ZURUECK.
-                          const res = rm && (rm.result !== undefined ? rm.result : rm);
-                          if (!res || res.code !== 0 || !Array.isArray(res.out)) return;
-                          let objName = null;
-                          let rawMap = null;
-                          for (const p of res.out) {
-                            if (p.value === undefined || p.value === null || p.value === '') continue;
-                            if (p.piid === 3) objName = p.value;
-                            else if (p.piid === 1) rawMap = p.value;
-                          }
-                          if (!rawMap && objName) {
-                            const mDev = this.deviceArray.find((dv) => String(dv.did) === String(did));
-                            if (mDev) rawMap = await this._downloadMapB64(objName, mDev);
-                          }
-                          if (rawMap) {
-                            this.log.debug(`[MERGE] fehlender P-Frame erhalten: map=${rq.mapId} frame=${rq.frameId}`);
-                            const merged2 = this.mapMerger.process(String(rawMap));
-                            if (merged2) await this._writeMerged(did, merged2);
-                          }
-                        })
-                        .catch((e) => this.log.debug('[MERGE] P-Frame-Anforderung fehlgeschlagen: ' + (e && e.message)));
-                    }
-                  }
-                  // Wie HA: bei fehlender Basis, Map-ID-Wechsel oder grosser Frame-Luecke
-                  // fordert der Merger eine frische Komplett-Karte an (throttled 60s).
-                  if (this.mapMerger.needMapRequest) {
-                    this.mapMerger.needMapRequest = false;
-                    const now = Date.now();
-                    if (!this._lastAutoMapFetch || now - this._lastAutoMapFetch > 60000) {
-                      this._lastAutoMapFetch = now;
-                      const mDevice = this.deviceArray.find((dv) => String(dv.did) === String(did));
-                      if (mDevice && !this.isMower(mDevice)) {
-                        this.log.debug('[MERGE] Sequenz-Luecke/Map-Wechsel -> frische Karte anfordern');
-                        this.getMap(mDevice, false);
-                      }
-                    }
-                    if (!this.mapMerger.current) {
-                      const now2 = Date.now();
-                      if (!this._noBaseMapWarn || now2 - this._noBaseMapWarn > 60000) {
-                        this._noBaseMapWarn = now2;
-                        this.log.error(
-                          'Es ist noch keine vollständige Karte geladen. Bitte den Adapter einmal starten, während der Roboter in der Ladestation steht (dann wird die komplette Karte geladen).',
-                        );
-                      }
-                    }
-                  }
-                } catch (e) {
-                  this.log.warn('[MERGE] MQTT-Frame: ' + e.message);
-                }
-              }
+              // Kartenpaket in den Zusammenbau geben (Rumpf in lib/mapController.js).
+              await this._kartenPaketEmpfangen(did, encode);
               this.setMapInfos(encode, mappath).catch((err) => this.log.warn('setMapInfos failed: ' + err.message));
             }
           }
           const device = this.deviceArray.find((d) => String(d.did) === did);
-          // Raum-Einstellungen frisch halten: Aendert man in der App etwas an einem Raum, pusht
-          // das Geraet sofort einen neuen object_name (6-3). Die Werte selbst stecken im
-          // dahinterliegenden Cloud-Objekt, also dieses nachladen (wie HA handle_properties).
-          // Nicht waehrend der Reinigung (HA: `not self._device_running`) — da kommen die Werte
-          // ohnehin mit den Kartenframes und der Push feuert dauernd.
-          if (device && !this.isMower(device) && element.siid === 6 && element.piid === 3) {
-            const _obj = String(element.value || '');
-            const _st = this._deviceStatus(did);
-            // Direkt nach dem Adapterstart ist der Eigenschaftsspeicher noch leer (taskStatus
-            // null); deviceStatusFlags meldet dann faelschlich "started" (taskStatus -1) und das
-            // Nachladen wuerde uebersprungen. Nur ueberspringen, wenn der Status bekannt IST.
-            const _laeuft = _st.taskStatus != null && deviceStatusFlags(_st).started;
-            // NICHT nach object_name drosseln: der Name bleibt gleich (.../0), nur der Inhalt
-            // dahinter aendert sich. HA laedt bei jedem Push (handle_properties). Hier nur eine
-            // Zeit-Drossel gegen Push-Gewitter.
-            const _now = Date.now();
-            if (_obj && !_laeuft && (!this._lastCleansetLoad || _now - this._lastCleansetLoad > 5000)) {
-              this._lastCleansetLoad = _now;
-              this._loadCleansetFromObject(_obj, device).catch(() => {});
-            }
-          }
+          // Raum-Einstellungen nachladen, wenn die App etwas geaendert hat (6-3).
+          // Rumpf in lib/mapController.js.
+          this._cleansetNachladenPruefen(did, device, element);
           if (this.isMower(device) && element.siid === 1 && element.piid === 4) {
             if (Array.isArray(element.value) && element.value.length >= 7) {
               const buf = Buffer.from(element.value);
@@ -4000,128 +3886,9 @@ class Dreame extends utils.Adapter {
   }
 
   async getMap(device, fetchAllMaps) {
-    // --- Wie HA: force-I-Request (siid 6/aiid 1) erzwingt einen KOMPLETTEN, AKTUELLEN
-    //     I-Frame der Arbeitskarte. Die Adresse kommt in der Aktions-ANTWORT zurück
-    //     (out/piid 3 = object_name), NICHT über die (veralteten) MAP_LIST-Properties.
-    //     Ohne force_type liefert der Roboter nur die alte gespeicherte Karte. ---
-    let freshBase64 = null;
-    try {
-      const rm = await this.sendCommand({
-        did: device.did,
-        method: 'action',
-        params: {
-          did: device.did,
-          siid: 6,
-          aiid: 1,
-          in: [{ piid: 2, value: '{"req_type":1,"frame_type":"I","force_type":1}' }],
-        },
-      });
-      const res = rm && (rm.result !== undefined ? rm.result : rm);
-      const out = res && res.out;
-      // Antwort wie HA _request_i_map auswerten: piid 3 = object_name, piid 1 = Karte
-      // DIREKT als Rohdaten (kommt v.a. WAEHREND der Reinigung statt object_name!),
-      // piid 13 = old_map_data ("0,<raw>" oder "<x>,<object_name>[,<aes-key>]").
-      let freshObj = null;
-      let freshRaw = null;
-      if (Array.isArray(out)) {
-        for (const p of out) {
-          if (p.value === undefined || p.value === null || p.value === '') continue;
-          if (p.piid === 3) freshObj = p.value;
-          else if (p.piid === 1) freshRaw = p.value;
-          else if (p.piid === 13) {
-            const values = String(p.value).split(',');
-            if (values[0] === '0') {
-              if (!freshRaw) freshRaw = values[1];
-            } else if (!freshObj) {
-              if (values.length === 3) {
-                this.log.warn('[MAP] Karten-Objekt mit AES-Key erhalten — Entschluesselung nicht implementiert');
-              } else {
-                freshObj = values[1];
-              }
-            }
-          }
-        }
-      }
-      if (freshObj) {
-        await new Promise((r) => setTimeout(r, 1500)); // kurz warten, bis Upload bereit
-        const url = await this.getFile(freshObj, device);
-        const resp = await this.requestClient({ method: 'get', url }).catch((e) => {
-          this.log.warn('[MAP] frisches Objekt Download-Fehler: ' + (e && e.message));
-          return null;
-        });
-        if (resp && resp.data) {
-          // Rohbytes robust holen (je nach Transport: Buffer / ArrayBuffer / Byte-Objekt /
-          // Binär-String). NICHT Buffer.from(string) mit UTF-8 -> das bläht Bytes>127 auf.
-          // Das Objekt kommt i.d.R. als base64-TEXT des zlib-Frames (wie mapstr[].map),
-          // kann je nach Transport aber auch Rohbytes/Byte-Objekt sein. Ziel: zlib-Buffer.
-          const data = resp.data;
-          let buf = null;
-          if (Buffer.isBuffer(data)) buf = data;
-          else if (data instanceof ArrayBuffer) buf = Buffer.from(data);
-          else if (typeof data === 'string') {
-            const b1 = Buffer.from(data, 'base64'); // base64-Text -> Bytes
-            if (b1.length > 2 && b1[0] === 0x78) buf = b1; // zlib-Magic 0x78 -> war base64
-            else {
-              const b2 = Buffer.from(data, 'latin1');
-              if (b2[0] === 0x78) buf = b2;
-            }
-          } else if (data && typeof data === 'object') {
-            const ks = Object.keys(data).filter((k) => /^\d+$/.test(k)).map(Number).sort((a, b) => a - b);
-            if (ks.length) buf = Buffer.from(ks.map((k) => data[k]));
-          }
-          if (buf && buf.length && buf[0] === 0x78) {
-            // zlib-Frame -> base64 (gleiche Form wie mapstr[].map, Merger inflatet es)
-            freshBase64 = buf.toString('base64');
-            this.log.info(`[MAP] frische Karte geladen (force I): ${freshObj} (${buf.length} B)`);
-            // Raum-Einstellungen (cleanset) aus demselben Objekt mitnehmen. Beim Adapterstart
-            // kommt kein object_name-Push, d.h. Aenderungen, die waehrend der Adapter aus war
-            // in der App gemacht wurden, wuerden sonst nie ankommen. Kein zusaetzlicher
-            // Download — der Inhalt liegt hier bereits vor.
-            try {
-              await this._applyCleansetFromInflated(
-                zlib.inflateSync(buf).toString('latin1'), String(device.did), 'Kartenabruf', freshObj);
-            } catch (e) {
-              this.log.debug(`[CLEANSET] aus Kartenabruf nicht lesbar: ${(e && e.message) || e}`);
-            }
-          } else {
-            this.log.warn('[MAP] frisches Objekt: kein zlib-Frame erkannt (' + typeof data + ')');
-          }
-        }
-      } else if (freshRaw) {
-        // Karte kam DIREKT in der Aktions-Antwort (base64-zlib-Frame) — wie HA raw_map_data
-        freshBase64 = String(freshRaw);
-        this.log.info(`[MAP] frische Karte direkt aus Antwort erhalten (${freshBase64.length} Zeichen)`);
-      } else {
-        this.log.debug('[MAP] force-I lieferte weder object_name noch Rohdaten -> Fallback');
-      }
-    } catch (e) {
-      this.log.warn('[MAP] request_map(force I) fehlgeschlagen: ' + (e && e.message));
-    }
-
-    // Frische Karte in den Merger geben. KEIN reset(): die HA-Sequenzregeln im Merger
-    // entscheiden selbst (aelterer I-Frame per timestamp wird uebersprungen — so kann
-    // die veraltete gespeicherte Karte eine frischere Live-Basis nicht ueberschreiben).
-    let freshBaseSet = false;
-    if (freshBase64) {
-      try {
-        if (!this.mapMerger) {
-          this.mapMerger = new MapMerger({ log: this.log });
-          // Geraete-Faehigkeiten wie HA (types.py 3105 + 3243) — s. MQTT-Pfad.
-          const lidarNavigation = !(this.specPropsToIdDict[device.did] && this.specPropsToIdDict[device.did]['13-1']);
-          const objectShift = lidarNavigation && String(device.model || '').includes('p20');
-          this.mapMerger.setCapability({ lidarNavigation, objectShift });
-          this._checkVslamSupport(device.did, lidarNavigation, device.model);
-        }
-        this._diagFrame('getMap-Fresh', freshBase64);
-        const base = this.mapMerger.process(freshBase64);
-        if (base) {
-          await this._writeMerged(device.did, base);
-          freshBaseSet = true;
-        }
-      } catch (e) {
-        this.log.warn('[MERGE] frische Basis: ' + (e && e.message));
-      }
-    }
+    // Vollbild-Abruf (force-I) dieses Forks — der Rumpf steht in lib/mapController.js,
+    // damit getMap() so nah wie moeglich am Original von TA2k bleibt.
+    await this._holeFrischeKarte(device);
 
     // --- Gespeicherte Karte (MAP_LIST/recovery) weiter laden: liefert Raumnamen/areaInfo/
     //     Segmentstruktur (in der Live-Karte NICHT enthalten) und dient als Fallback-Basis. ---
