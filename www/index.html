@@ -1378,22 +1378,19 @@
       ? (gewaehlt.length === 1 ? '1 Raum gewählt' : gewaehlt.length + ' Räume gewählt')
       : 'Raum antippen zum Wählen';
 
-    // Globale Regler ZEIGEN den Stand der gewaehlten Raeume: gleicher Wert -> dieser Wert,
-    // unterschiedliche -> "Gemischt (min–max)". Verstellen setzt dann alle auf einmal.
-    // Ohne Auswahl steht dort der Wert, den das Geraet meldet — das ist der, der wirkt.
-    // Das ist auch der Fall waehrend einer Fahrt, denn die Auswahl wird beim Start geleert.
+    // Auf den beiden Kompaktkarten steht der GERAETEWERT — derselbe, der auch an jedem
+    // Raum im Badge steht. Frueher stand hier der Bereich der gewaehlten Raeume ("5–15"
+    // aus deren cleanset), waehrend die Badges laengst den einheitlichen Wert zeigten:
+    // zwei verschiedene Zahlen fuer dieselbe Sache. Der Bereich stammt noch aus der Zeit,
+    // als die Kacheln nur Abweichungen je Raum gesetzt haben — im Einheitlich-Betrieb
+    // gilt aber genau ein Wert fuer alle, da gibt es nichts zu mitteln.
+    // Im Individuell-Betrieb sind die Kacheln gesperrt; dort zeigen die Badges die Werte
+    // je Raum.
     const laeuft = geraetGestartet();
     if (!customizedCleaning){
-      // Auf den beiden Kompaktkarten steht nur die Zahl — das Wort dazu sieht man im
-      // Dialog. Weichen die gewaehlten Raeume voneinander ab, steht dort "min–max".
-      const zeig = (label, werte, text) => {
-        const lb=document.getElementById(label);
-        if(!lb) return;
-        const min=Math.min(...werte), max=Math.max(...werte);
-        lb.textContent = (min===max) ? text(min) : `${text(min)}–${text(max)}`;
-      };
-      zeig('suctionVal', gewaehlt.length ? gewaehlt.map(effSaug)   : [globalSaug],   (v)=>String(v+1));
-      zeig('waterVal',   gewaehlt.length ? gewaehlt.map(effWasser) : [globalWasser], (v)=>String(v));
+      const sv=document.getElementById('suctionVal'), wv=document.getElementById('waterVal');
+      if (sv) sv.textContent = String(globalSaug + 1);   // Anzeige 1-4, intern 0-3
+      if (wv) wv.textContent = String(globalWasser);
     }
     // Sperren, was der eingestellte Modus gar nicht nutzt: beim reinen Saugen gibt es
     // keine Wassermenge, beim reinen Wischen keine Saugstaerke.
@@ -1727,17 +1724,16 @@
     };
     // Die beiden Kacheln zeigen nur an; der Regler steckt im Overlay. Der uebernommene
     // Wert gilt fuer alle gewaehlten Raeume — einzeln nachjustieren geht ueber das Badge.
-    // Ohne Auswahl (also waehrend einer Fahrt) steht der Regler auf dem Wert, den das
-    // Geraet meldet. Math.min() einer leeren Liste waere Infinity — der Regler landete
-    // am Anschlag und schriebe beim Zumachen einen Unsinnswert zurueck.
+    // Der Regler startet auf dem Geraetewert — demselben, der auf der Kachel und in den
+    // Badges steht. Frueher war es der kleinste Wert der gewaehlten Raeume; dann zeigte
+    // die Kachel 23 und der Regler sprang beim Oeffnen auf 5.
+    // (Die Kacheln sind nur im Einheitlich-Betrieb bedienbar, s. updateCleanPanel.)
     document.getElementById('suctionTile').onclick=()=>{
-      const w = [...selectedRooms].map(effSaug);
-      openSlider('Saugstärke', { min:0, max:3, wert: w.length ? Math.min(...w) : globalSaug, text:suctText },
+      openSlider('Saugstärke', { min:0, max:3, wert:globalSaug, text:suctText },
         (v)=> fuerAlle('saug', v));
     };
     document.getElementById('waterTile').onclick=()=>{
-      const w = [...selectedRooms].map(effWasser);
-      openSlider('Wassermenge', { min:1, max:32, wert: w.length ? Math.min(...w) : globalWasser, text:(v)=>String(v) },
+      openSlider('Wassermenge', { min:1, max:32, wert:globalWasser, text:(v)=>String(v) },
         (v)=> fuerAlle('wasser', v));
     };
     // Betriebsart umschalten = Geraeteschalter 4-26. Wird sofort gesetzt, damit Widget und
@@ -1777,12 +1773,17 @@
       // dass HA fuer beide ein eigenes Bedienelement hat, das direkt auf die Eigenschaft
       // schreibt — genau wie beim Modus. Ohne dieses Stueck wirkte im Einheitlich-Betrieb
       // gar nichts mehr, weil das Geraet aus der Liste nur einen Wert nimmt.
-      const gewaehlteIds = [...selectedRooms];
-      const suct = Math.min(...gewaehlteIds.map(effSaug));   // nur fuer den Individuell-Fall
-      const wasser = Math.min(...gewaehlteIds.map(effWasser));
-      // Alle gewählten Räume: [RaumID, Wdh, Saug, Wasser(0=kein Wischen), Feld5]
-      // Je Raum darf abgewichen werden (nur diese Fahrt, Einheitlich-Betrieb): HA kann das
-      // genauso, dort nimmt clean_segment suction_level/water_volume auch als Liste je Raum.
+      // Alle gewählten Räume: [RaumID, Wdh, Saug, Wasser, Feld5]
+      //
+      // Saugstufe und Wassermenge sind fuer JEDEN Raum der Geraetewert — 1:1 wie HAs
+      // clean_segment ohne ausdrueckliche Liste (device.py 4646-4650 und 4671-4692):
+      // dort wird suction_level/water_volume auf den globalen Wert gesetzt und im
+      // Skalar-Zweig unveraendert an jeden Raum geschrieben. Die cleanset-Werte je Raum
+      // zieht HA nur, wenn eine Liste uebergeben wird UND customized_cleaning an ist.
+      // Frueher stand hier effSaug(id)/effWasser(id), also der cleanset-Wert des Raums —
+      // eine Zahl, nach der im Einheitlich-Betrieb gar nicht gefahren wird, und die zu den
+      // Kacheln und Badges nicht passte. Im Individuell-Betrieb ist der Wert ohnehin egal,
+      // das Geraet nimmt dann sein cleanset.
       //
       // FELD 5 IST KEINE LAUFENDE NUMMER, auch wenn es so aussieht. HA setzt es auf 1,
       // sobald das Geraet individuelle Raum-Einstellungen beherrscht, und schreibt dazu
@@ -1791,18 +1792,12 @@
       // Genau das ist hier passiert: mit 1,2 hat der X40 nur den ersten Raum gereinigt und
       // ist danach zur Station gefahren. Nur aeltere Geraete ohne diese Faehigkeit
       // bekommen die laufende Nummer.
-      const selects = [...selectedRooms].sort((a,b)=>a-b).map((id,i)=>{
-        // Einheitlich: je Raum sein effektiver Wert (Abweichung, sonst der gespeicherte).
-        // Individuell: das Geraet nimmt ohnehin das cleanset — Werte hier egal.
-        const s = customizedCleaning ? suct   : effSaug(id);
-        // Wassermenge IMMER als echter Wert, auch beim reinen Saugen. Frueher stand hier
-        // eine 0, wenn nicht gewischt wird — das war eine Eigenmaechtigkeit von uns. HA
-        // schickt in clean_segment (device.py 4681-4692) unabhaengig vom Modus die
-        // Feuchtigkeitsstufe; ob gewischt wird, entscheidet der Modus ohnehin. Was das
-        // Geraet aus einer 0 macht, wussten wir nicht.
-        const w = customizedCleaning ? wasser : effWasser(id);
-        return [id, 1, s, w, customizedFaehig ? 1 : i+1];
-      });
+      // Wassermenge IMMER als echter Wert, auch beim reinen Saugen. Frueher stand hier
+      // eine 0, wenn nicht gewischt wird — das war eine Eigenmaechtigkeit von uns. HA
+      // schickt unabhaengig vom Modus die Feuchtigkeitsstufe; ob gewischt wird,
+      // entscheidet der Modus ohnehin. Was das Geraet aus einer 0 macht, wussten wir nicht.
+      const selects = [...selectedRooms].sort((a,b)=>a-b).map((id,i)=>
+        [id, 1, globalSaug, globalWasser, customizedFaehig ? 1 : i+1]);
       cmd('remote.start-custom-clean', JSON.stringify([{piid:1,value:18},{piid:10,value:JSON.stringify({selects})}]));
       selectedRooms.clear(); // Auswahl nach dem Start leeren, damit sie nicht beim naechsten Mal "vergessen" mitläuft
       // Abweichungen gelten laut Beschriftung nur fuer DIESE Fahrt -> danach verwerfen,
