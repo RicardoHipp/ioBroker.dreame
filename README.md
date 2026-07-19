@@ -65,6 +65,19 @@ from that project unchanged.
 - `PORT_STATUS.md` — which parts of the reference implementation are ported, and
   where this adapter deviates
 
+### Version numbers
+
+The version reads `<upstream version>+fork.<n>` — for example `0.3.24+fork.1`
+means "based on TA2k 0.3.24, first fork build".
+
+Everything after the `+` is build metadata, which semver ignores when comparing.
+ioBroker therefore treats this build as equal to upstream 0.3.24 and shows no
+update notice — until upstream releases 0.3.25, at which point the notice
+appears and actually means something: *upstream has moved on*.
+
+**Do not click that update.** It would replace this fork with the official
+adapter. Treat it as a reminder to merge upstream changes instead.
+
 ---
 
 ## Installation
