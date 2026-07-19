@@ -28,10 +28,7 @@ const { decodeMultiMapData } = require('./lib/dreame');
 // nah wie moeglich am Original von TA2k bleibt und ein Abgleich mit neuen Versionen
 // moeglichst konfliktfrei laeuft. Die Methoden werden unten an die Adapter-Klasse
 // geheftet und verhalten sich dadurch exakt wie zuvor.
-//
-// Mit umgezogen sind auch die zugehoerigen Konstanten (PROP_STATE, PROP_TASK_STATUS, …)
-// und die Einbindungen von zlib, mapMerge und haMap — sie wurden hier nur noch von den
-// verschobenen Methoden gebraucht.
+
 const mapController = require('./lib/mapController');
 
 const { getRoomDisplayName, buildSegmentTypeMap } = require('./lib/cleanset');
@@ -4853,10 +4850,6 @@ class Dreame extends utils.Adapter {
     }
   }
 
-  // An dieser Stelle standen bis zum Umbau _loadCleansetFromObject und
-  // _applyCleansetFromInflated (Karten-Objekt hinter einem object_name nachladen und die
-  // Raum-Einstellungen daraus uebernehmen). Beides kommt im Original nicht vor, hier ist
-  // also nichts ersetzt worden. Jetzt in lib/mapController.js.
   async getFile(url, device) {
     return await this.requestClient({
       method: 'post',
