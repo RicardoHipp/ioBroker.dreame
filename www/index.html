@@ -880,8 +880,29 @@
     4:'Küche',5:'Esszimmer',6:'Badezimmer',7:'Balkon',8:'Flur',9:'Abstellraum',
     10:'Kleiderschrank',11:'Besprechungsraum',12:'Büro',13:'Fitnessbereich',
     14:'Freizeitbereich',15:'Gästeschlafzimmer'};
-  const roomName = (id, seg) => { const t = seg && seg[id] && seg[id].type;
-    return (t!=null && ROOM_TYPE_DE[t]) ? ROOM_TYPE_DE[t] : ('Raum '+id); };
+  // Eigener Raumname aus der App: kommt in seg_inf als Base64 (UTF-8, also mit Umlauten).
+  const b64Name = s => { try {
+    const b = atob(s), u = new Uint8Array(b.length);
+    for (let i=0;i<b.length;i++) u[i] = b.charCodeAt(i);
+    return new TextDecoder().decode(u) || null;
+  } catch(e){ return null; } };
+
+  // 1:1 wie HA set_name() (types.py 3680-3688) bzw. getRoomDisplayName() im Adapter:
+  //   1. Typ >= 1 aus der Auswahlliste -> uebersetzter Name, ab dem zweiten Raum
+  //      desselben Typs mit Nummer ("Badezimmer 2"). Typ 0 zaehlt hier NICHT mit,
+  //      sonst liefert ROOM_TYPE_DE[0]='Raum' fuer jeden unbenannten Raum dasselbe.
+  //   2. Sonst der in der App frei vergebene Name (Typ faellt dabei auf 0 zurueck).
+  //   3. Sonst "Raum <id>".
+  const roomName = (id, seg) => {
+    const si = seg && seg[id];
+    const t = si && si.type;
+    if (t != null && t !== 0 && ROOM_TYPE_DE[t]) {
+      const idx = si.index || 0;
+      return idx > 0 ? `${ROOM_TYPE_DE[t]} ${idx+1}` : ROOM_TYPE_DE[t];
+    }
+    const eigen = si && si.name ? b64Name(si.name) : null;
+    return eigen || ('Raum '+id);
+  };
 
   // ===== Farben — HA "Dreame Light"-Schema (= wie die App) =====
   // HAs 4 Raum-Farbgruppen (types.py MapRendererColorScheme.segment), je [hell, kräftig].

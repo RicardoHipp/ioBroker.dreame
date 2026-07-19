@@ -120,15 +120,77 @@ letzte Pfadsegment, das ohnehin der cleanset-Schlüssel ist.
 
 ---
 
-## 5. Sentry-Fehlermeldung ohne Wirkung dokumentiert
 
-**Datei:** `README.md`
+---
 
-Kein Fehler im Code, nur ein Hinweis: Die README enthält den Standardabsatz, dass der
-Adapter Fehler per Sentry meldet. `io-package.json` enthält zwar einen `plugins.sentry`-
-Block, aber der Absatz stammt aus der Vorlage für neue Adapter — er stand schon in der
-README, bevor absehbar war, ob die Funktion je benutzt wird. Wer die Datenübertragung
-bewerten will, findet dort keine belastbare Aussage.
+## 6. Beim Umbenennen eines Raums bleibt der alte Objektknoten stehen
+
+**Datei:** `main.js`, `_setCustomRoomCleaningMap()`
+
+**Fehler:** Der Knotenname wird aus dem Raumtyp gebildet (`kitchen`, `dining-hall` …),
+bei Typ 0 aus der Segment-ID (`room-3`). Vergibt man in der App einen eigenen Namen,
+setzt das Geraet den Typ auf 0 zurueck — der Adapter legt daraufhin einen neuen Knoten an
+und laesst den alten unberuehrt stehen.
+
+**Beobachtung:** Raum 3 war Typ 5 (Esszimmer) und wurde in der App auf "Esszimmer1"
+umbenannt. Danach:
+
+```
+remote.custom-room-cleaning.map-1.dining-hall   "Speisesaal"   <- wird nicht mehr befuellt
+remote.custom-room-cleaning.map-1.room-3        "Esszimmer1"   <- der aktuelle Knoten
+```
+
+**Folge:** Ein Skript oder Widget, das den alten Knoten benutzt, schaltet ins Leere, ohne
+Fehlermeldung. Bei jeder weiteren Umbenennung waechst der Baum um einen toten Eintrag.
+
+**Behebung:** Vor dem Anlegen die vorhandenen Knoten unter `map-<id>` einlesen und alle
+loeschen, deren `native.roomId` nicht mehr in `areaInfo` vorkommt oder deren Slug nicht
+mehr dem aktuellen Typ entspricht.
+
+---
+
+## 7. `areaNames` wird nie befuellt
+
+**Datei:** `lib/dreame.js` (berechnet) / `main.js` (schreibt die Karten-States)
+
+**Fehler:** `decodeMultiMapData()` baut ein `areaNames`-Objekt auf und gibt es im Ergebnis
+zurueck (`lib/dreame.js`, Zweig `if (_item13.type === 0)` — der in der App vergebene Name
+wird dort bereits aus Base64 dekodiert). Geschrieben wird es aber nie.
+
+**Beobachtung:**
+
+```
+map.maps.1.info.areaNames:   channel —   (keine Kinder)
+```
+
+Der Kanal wird angelegt und bleibt leer. Genau an der Stelle, an der man Raumnamen
+erwartet, steht nichts. Auffindbar sind sie nur als Objekt-Beschriftung unter
+`remote.custom-room-cleaning.map-<id>.<slug>`.
+
+**Behebung:** `areaNames` analog zu `areaColor` / `areaInfo` als States unter
+`map.maps.<id>.info.areaNames.<segmentId>` schreiben.
+
+**Randnotiz:** Raeume ohne zugewiesenen Typ (Typ 0) bekommen unter
+`map.maps.<id>.info.areaInfo.<id>` auch keinen `areaType`-Zweig, weil der Adapter ihn nur
+bei vorhandenem Typ anlegt. In Verbindung mit dem leeren `areaNames` ist ein frisch
+angelegter Raum dort ueberhaupt nicht mehr identifizierbar.
+
+---
+
+## 8. Deutsche Uebersetzung "Speisesaal" weicht von App und HA ab
+
+**Datei:** `lib/i18n/de.json`
+
+```
+"segment.type.dining-hall": "Speisesaal"
+```
+
+Die Dreame-App und die HA-Integration (`translations/de.json`: `"dining_hall": "Esszimmer"`)
+verwenden beide **Esszimmer**. "Speisesaal" ist ungebraeuchlich und passt nicht zu dem,
+was der Nutzer in der App ausgewaehlt hat.
+
+Kein Funktionsfehler, nur Wortwahl — faellt aber sofort auf, weil derselbe Raum in App und
+Objektbaum unterschiedlich heisst.
 
 ---
 
@@ -136,5 +198,7 @@ bewerten will, findet dort keine belastbare Aussage.
 
 Gefunden beim Bau eines Karten-Widgets auf Basis dieses Adapters
 (https://github.com/RicardoHipp/ioBroker.dreame). Punkt 1 bis 4 sind dort behoben; die
-Änderungen sind klein und lassen sich übernehmen. Alle Vergleichsstellen in der
-HA-Integration sind mit Datei und Zeilennummer angegeben, damit sie nachprüfbar sind.
+Änderungen sind klein und lassen sich übernehmen. Punkt 6 bis 8 betreffen nur den
+Objektbaum und sind im Fork **nicht** angefasst — das Widget baut die Raumnamen selbst aus
+den Kartendaten. Alle Vergleichsstellen in der HA-Integration sind mit Datei und
+Zeilennummer angegeben, damit sie nachprüfbar sind.

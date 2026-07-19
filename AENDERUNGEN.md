@@ -95,6 +95,14 @@ Nummer aussieht. Bei neueren Geräten muss dort aber überall eine 1 stehen — 
 Wert bringt den Ablauf durcheinander. Betrifft auch das Original; als Fehlerbericht
 formuliert.)*
 
+### Räume heißen so, wie man sie in der App genannt hat
+**Vorher:** Räume ohne zugewiesenen Raumtyp hießen im Widget alle gleich, nämlich schlicht
+„Raum" — bei mehreren neuen Räumen konnte man sie nicht auseinanderhalten. Ein selbst
+vergebener Name wie „Esszimmer1" tauchte gar nicht auf.
+**Jetzt:** Ein in der App vergebener Name wird angezeigt. Hat der Raum keinen eigenen
+Namen, steht dort „Raum 8", „Raum 9" — also mit Nummer. Und gibt es mehrere Räume
+desselben Typs, werden sie durchnummeriert: „Badezimmer" und „Badezimmer 2".
+
 ### Fehlermeldungen stehen im Klartext
 **Vorher:** Bei einer Meldung des Roboters stand nur „Fehler 68" — nachschlagen musste man
 selbst.
