@@ -97,14 +97,16 @@
   .gear.on{background:var(--accent);color:#fff;border-color:var(--accent)}
   #gearOvl h2{margin-top:16px}
   #gearOvl h2:first-of-type{margin-top:0}
-  /* Adresse zum Kopieren: zugeklappt, weil sie nur beim Einbetten in VIS gebraucht wird */
-  .adresse{margin-top:12px}
-  .adresse summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;
+  /* Aufklappbare Abschnitte im Einstellungs-Dialog. Zugeklappt, weil sie selten gebraucht
+     werden — die Raumliste kann lang sein, die Adresse braucht man nur beim Einbetten. */
+  .klapp{margin-top:12px}
+  .klapp summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px;
     font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
-  .adresse summary::-webkit-details-marker{display:none}
-  .adresse summary .sumtext{flex:1}
-  .adresse[open] summary .ico.chev{transform:rotate(180deg)}
-  .adresse summary .ico{transition:transform .15s}
+  .klapp summary::-webkit-details-marker{display:none}
+  .klapp summary .sumtext{flex:1}
+  .klapp[open] summary .ico.chev{transform:rotate(180deg)}
+  .klapp summary .ico{transition:transform .15s}
+  .klapp > .roomlist{margin-top:10px}
   .adrtext{font-size:12px;line-height:1.45;color:var(--muted);margin:8px 0}
   .adresse input{width:100%;padding:9px 10px;border-radius:9px;border:1px solid var(--line);
     background:var(--panel2);color:var(--txt);font:inherit;font-size:12px;margin-bottom:8px}
@@ -567,7 +569,11 @@
       <div class="slabel" style="opacity:.7;margin-top:6px">
         Auf schmalen Bildschirmen steht die Bedienung immer unter der Karte.
       </div>
-      <details class="adresse" id="adrBox">
+      <details class="klapp" id="raeumeBox">
+        <summary><span class="sumtext">Sichtbarkeit Räume</span></summary>
+        <div class="roomlist" id="roomList"></div>
+      </details>
+      <details class="klapp adresse" id="adrBox">
         <summary><span class="sumtext">Adresse mit diesen Einstellungen</span></summary>
         <p class="adrtext">
           Die Einstellungen oben gelten nur in <b>diesem Browser</b>. Wer das Widget in VIS
@@ -577,9 +583,7 @@
         <input type="text" id="adrFeld" readonly>
         <button class="ovlclose" id="adrCopy">Adresse kopieren</button>
       </details>
-      <h2 style="margin-top:16px">Räume</h2>
-      <div class="roomlist" id="roomList"></div>
-      <button class="ovlclose" id="gearClose">Schließen</button>
+      <button class="ovlclose" id="gearClose" style="margin-top:16px">Schließen</button>
     </div>
   </div>
 
@@ -1547,8 +1551,9 @@
     const sb = document.getElementById('statsBtn');
     if (sb){ sb.insertAdjacentHTML('beforeend', uiIcon('weiter',14,'chev'));
              sb.onclick = openStatistik; }
-    const adr = document.querySelector('.adresse summary');
-    if (adr) adr.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev'));
+    for (const s of document.querySelectorAll('.klapp summary')){
+      s.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev'));
+    }
   }
   function setupCleanPanel(){
     const modeRow=document.getElementById('modeRow'), modeVal=document.getElementById('modeVal');
