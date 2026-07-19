@@ -217,14 +217,25 @@
     display:flex; align-items:flex-start; gap:26px; margin-top:12px}
   :root[data-leiste="oben"] .untenrum .gruppe,
   :root[data-leiste="unten"] .untenrum .gruppe{margin-top:0}
+  /* Etwas breiter als frueher (400px): in der oberen Zeile stehen jetzt drei Kacheln
+     statt zwei, sonst wird "Saugen und Wischen" auf ein Drittel gequetscht. */
   :root[data-leiste="oben"] .g-wahl,
-  :root[data-leiste="unten"] .g-wahl{flex:none; width:400px}
-  /* Waagerecht volles 2x2: dort ist genug Breite, dass auch Reinigung und Modus in eine
-     halbe Zeile passen. */
+  :root[data-leiste="unten"] .g-wahl{flex:none; width:470px}
+  /* Waagerecht ist Breite da: obere Zeile Reinigung | Modus | Route, darunter die beiden
+     Kompaktkacheln. Dafuer ein 6er-Raster — 3x2 Spalten oben, 2x3 unten geht glatt auf,
+     mit "1fr 1fr" liesse sich die Dreierzeile nicht gleichmaessig teilen. */
+  :root[data-leiste="oben"] .wraster,
+  :root[data-leiste="unten"] .wraster{grid-template-columns:repeat(6,1fr)}
   :root[data-leiste="oben"] .wraster > :nth-child(1),
   :root[data-leiste="oben"] .wraster > :nth-child(2),
+  :root[data-leiste="oben"] .wraster > :nth-child(3),
   :root[data-leiste="unten"] .wraster > :nth-child(1),
-  :root[data-leiste="unten"] .wraster > :nth-child(2){grid-column:auto}
+  :root[data-leiste="unten"] .wraster > :nth-child(2),
+  :root[data-leiste="unten"] .wraster > :nth-child(3){grid-column:span 2}
+  :root[data-leiste="oben"] .wraster > :nth-child(4),
+  :root[data-leiste="oben"] .wraster > :nth-child(5),
+  :root[data-leiste="unten"] .wraster > :nth-child(4),
+  :root[data-leiste="unten"] .wraster > :nth-child(5){grid-column:span 3}
   :root[data-leiste="oben"] .g-verbrauch,
   :root[data-leiste="unten"] .g-verbrauch{flex:1; min-width:260px}
   /* Der Zustandstext darf sich die freie Breite nehmen, die Meldungen sitzen in der
@@ -313,7 +324,9 @@
      teilen sich eine Zeile, da stehen nur kurze Angaben.
      Waagerecht wird daraus weiter unten ein volles 2x2-Raster. */
   .wraster{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .wraster > :nth-child(1), .wraster > :nth-child(2){grid-column:1 / -1}
+  /* Senkrecht (Leiste links/rechts): Reinigung, Modus und Route jeweils ueber die volle
+     Breite untereinander — nur die beiden Kompaktkacheln teilen sich eine Zeile. */
+  .wraster > :nth-child(1), .wraster > :nth-child(2), .wraster > :nth-child(3){grid-column:1 / -1}
   .wkarte{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:3px;
     padding:9px 26px 9px 12px;border-radius:10px;border:1.5px solid var(--line);
     background:var(--panel);color:var(--txt);font:inherit;text-align:left;
@@ -502,6 +515,10 @@
               <button class="wkarte" id="modeRow" type="button">
                 <span class="wk">Modus</span>
                 <span class="wv" id="modeVal">Saugen</span>
+              </button>
+              <button class="wkarte" id="routeRow" type="button">
+                <span class="wk">Route</span>
+                <span class="wv" id="routeVal">Standard</span>
               </button>
               <!-- Nur Symbol und Zahl: was gemeint ist, sagt das Symbol, und die
                    Langfassung steht im Dialog, den ein Tipp oeffnet. -->
@@ -982,6 +999,43 @@
   const modeWischt = (id) => id === 1 || id === 2 || id === 3;
   const modeSaugt  = (id) => id === 0 || id === 2 || id === 3;
 
+  // Reinigungsroute (HA types.py 712-720). Liegt NICHT als eigene Eigenschaft vor, sondern
+  // im Sammelpaket auto-switch-settings unter dem Schluessel "CleanRoute" — deshalb zwei
+  // States: lesen aus status.cleaning-route, schreiben nach remote.set-cleaning-route.
+  // Reihenfolge wie HAs CLEANING_ROUTE_TO_NAME (const.py 1609-1614).
+  const CLEAN_ROUTES = [
+    { id: 4, name: 'Schnell',  desc: 'Zügig, ein Durchgang' },
+    { id: 1, name: 'Standard', desc: 'Normaler Ablauf' },
+    { id: 2, name: 'Intensiv', desc: 'Gründlicher wischen' },
+    { id: 3, name: 'Tief',     desc: 'Am gründlichsten, dauert am längsten' },
+  ];
+  let cleanRoute = 1;
+  const routeOf = (id) => CLEAN_ROUTES.find((r) => r.id === id) || CLEAN_ROUTES[1];
+  // Welche Routen der eingestellte Modus zulaesst — 1:1 HA device.py 749-758 bzw. 1036-1044:
+  // beim Saugen und beim gleichzeitigen Saugen+Wischen fallen "Intensiv" und "Tief" weg,
+  // das sind reine Wisch-Stufen. (HAs zweite Bedingung, cleaning_route_v2, ist dort nirgends
+  // auf true gesetzt — der einschraenkende Zweig gilt also immer.)
+  const routenFuer = (m) => (m === 0 || m === 2)
+    ? CLEAN_ROUTES.filter((r) => r.id !== 2 && r.id !== 3)
+    : CLEAN_ROUTES.slice();
+  function zeigeRoute(){
+    const el = document.getElementById('routeVal');
+    if (el) el.textContent = routeOf(cleanRoute).name;
+  }
+  /**
+   * Nach einem Moduswechsel kann die eingestellte Route wegfallen (Intensiv/Tief gibt es
+   * beim Saugen nicht). HA setzt dann auf Standard zurueck — aber nur, solange KEIN Auftrag
+   * laeuft (device.py 1046-1054): mitten in der Fahrt wuerde das die laufende Reinigung
+   * umstellen.
+   */
+  function pruefeRoute(){
+    if (routenFuer(cleanMode).some((r) => r.id === cleanRoute)) return;
+    if (geraetGestartet()) return;
+    cleanRoute = 1;
+    cmd('remote.set-cleaning-route', 1);
+    zeigeRoute();
+  }
+
   // ===== Raum-Einstellungen (cleanset) =====
   // Pro Raum haelt das GERAET: [Saugstaerke, Wasser/Naesse, Wiederholung, Reihenfolge, Modus, Route].
   // Wir lesen sie aus den Adapter-States und schreiben Aenderungen dorthin zurueck — den Rest
@@ -1359,6 +1413,11 @@
     const cr=document.getElementById('custRow');
     if (mr) mr.disabled = customizedCleaning || laeuft;
     if (cr) cr.disabled = laeuft;
+    // Die Route bleibt waehrend der Fahrt bedienbar — sie wirkt sofort, wie Saugstufe und
+    // Wassermenge. Nur im Individuell-Betrieb ist sie gesperrt: dort gilt die je Raum
+    // gespeicherte Route (sechstes Feld im cleanset), nicht die globale.
+    const rr=document.getElementById('routeRow');
+    if (rr) rr.disabled = customizedCleaning;
     if (ih) ih.style.display = customizedCleaning ? '' : 'none';
     // Die Badges zeigen dieselben Werte — hier und nicht in updateLabels(), weil sich der
     // Inhalt auch OHNE Auswahlwechsel aendert: Modus, Betriebsart, globale Regler, und
@@ -1623,7 +1682,14 @@
     // wechselte erst nach Auftragsende. Zwischen Umstellen und Start liegen jetzt
     // Sekunden bis Minuten, das reicht.
     modeRow.onclick=()=> openPicker('Reinigungsmodus', CLEAN_MODES, cleanMode,
-      (id)=>{ cleanMode=id; cmd('remote.cleaning-mode', id); applyMode(); updateCleanPanel(); });
+      (id)=>{ cleanMode=id; cmd('remote.cleaning-mode', id); pruefeRoute(); applyMode(); updateCleanPanel(); });
+    // Route: anders als der Modus waehrend der Fahrt aenderbar — sie bestimmt nicht, WAS
+    // fuer ein Auftrag laeuft, sondern nur, wie gruendlich gefahren wird.
+    // Geschrieben wird nach remote.set-cleaning-route; die Rueckmeldung kommt ueber
+    // status.cleaning-route, sobald das Geraet das auto-switch-Paket zurueckschickt.
+    document.getElementById('routeRow').onclick=()=> openPicker('Route',
+      routenFuer(cleanMode), cleanRoute,
+      (id)=>{ cleanRoute=id; cmd('remote.set-cleaning-route', id); zeigeRoute(); });
     // Fuellstand fuer JEDEN Regler mitziehen — auch fuer die erst im Overlay erzeugten,
     // deshalb einmal zentral statt an jedem Regler einzeln.
     document.addEventListener('input',(e)=>{
@@ -3297,6 +3363,13 @@
         const wWert = await sGet(sock, WET_ID);  if (wWert != null) globalWasser = Number(wWert);
         sock.emit('subscribe', SUCT_ID);
         sock.emit('subscribe', WET_ID);
+        // Route: gelesen wird status.cleaning-route, geschrieben remote.set-cleaning-route.
+        // Der Adapter packt beide Richtungen aus dem bzw. in das auto-switch-Paket.
+        const ROUTE_ID = `dreame.0.${DID}.status.cleaning-route`;
+        const rWert = await sGet(sock, ROUTE_ID);
+        if (rWert != null && CLEAN_ROUTES.some(r => r.id === Number(rWert))) cleanRoute = Number(rWert);
+        zeigeRoute();
+        sock.emit('subscribe', ROUTE_ID);
         for (const id of Object.keys(rooms||{})){
           const v = await sGet(sock, `dreame.0.${DID}.map.cleanset.${id}.RoomSettings`);
           if (typeof v === 'string') { try { roomCleanset[id] = JSON.parse(v); } catch(e){} }
@@ -3336,6 +3409,10 @@
           }
           else if (id===SUCT_ID && st.val!=null){ globalSaug   = Number(st.val); updateCleanPanel(); }
           else if (id===WET_ID  && st.val!=null){ globalWasser = Number(st.val); updateCleanPanel(); }
+          else if (id===ROUTE_ID && st.val!=null && CLEAN_ROUTES.some(r=>r.id===Number(st.val))){
+            // Auch Aenderungen aus der App landen hier.
+            cleanRoute = Number(st.val); zeigeRoute();
+          }
           else if (CS_RE.test(id)){
             const rid = id.match(CS_RE)[1];
             if (typeof st.val === 'string'){ try { roomCleanset[rid] = JSON.parse(st.val); updateCleanPanel(); } catch(e){} }

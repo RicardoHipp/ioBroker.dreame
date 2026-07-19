@@ -95,6 +95,15 @@ Nummer aussieht. Bei neueren Geräten muss dort aber überall eine 1 stehen — 
 Wert bringt den Ablauf durcheinander. Betrifft auch das Original; als Fehlerbericht
 formuliert.)*
 
+### Die Route lässt sich einstellen
+**Vorher:** Die Route aus der App (Schnell, Standard, Intensiv, Tief) gab es im Widget
+nicht — man musste dafür in die App wechseln.
+**Jetzt:** Es gibt eine eigene Kachel neben dem Modus. Sie zeigt immer, was am Gerät
+eingestellt ist, und lässt sich auch während einer laufenden Reinigung ändern.
+Angeboten wird nur, was zum Modus passt: „Intensiv" und „Tief" sind Wisch-Stufen und
+tauchen beim reinen Saugen gar nicht erst auf. Fällt die eingestellte Route durch einen
+Moduswechsel weg, springt sie auf Standard zurück — aber nur, wenn gerade nichts läuft.
+
 ### Saugstärke und Wassermenge wirken jetzt wirklich
 **Vorher:** Die eingestellten Werte gingen nur im Startbefehl mit — dort steht je Raum ein
 eigener Wert. Im einheitlichen Betrieb nimmt der Roboter davon aber nur einen einzigen und
