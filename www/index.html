@@ -1251,16 +1251,17 @@
     // Globale Regler ZEIGEN den Stand der gewaehlten Raeume: gleicher Wert -> dieser Wert,
     // unterschiedliche -> "Gemischt (min–max)". Verstellen setzt dann alle auf einmal.
     if (!customizedCleaning && gewaehlt.length){
-      // Kurzfassung: auf den Kacheln ist nur Platz fuer den Wert, nicht fuer Wort und
-      // Spannweite. Bei unterschiedlichen Werten daher "min–max" statt "Gemischt (…)".
-      const zeig = (kachel, label, werte, text) => {
+      // Bei einem einheitlichen Wert steht die Langfassung da (bei der Saugstufe also Zahl
+      // UND Wort). Weichen die gewaehlten Raeume voneinander ab, wird auf "min–max"
+      // verkuerzt — "2 · Standard–3 · Stark" waere auf der Karte nicht mehr lesbar.
+      const zeig = (label, werte, kurz, lang) => {
         const lb=document.getElementById(label);
         if(!lb) return;
         const min=Math.min(...werte), max=Math.max(...werte);
-        lb.textContent = (min===max) ? text(min) : `${text(min)}–${text(max)}`;
+        lb.textContent = (min===max) ? (lang||kurz)(min) : `${kurz(min)}–${kurz(max)}`;
       };
-      zeig('suctionTile','suctionVal', gewaehlt.map(effSaug),   (v)=>String(v+1));
-      zeig('waterTile','waterVal',     gewaehlt.map(effWasser), (v)=>String(v));
+      zeig('suctionVal', gewaehlt.map(effSaug),   (v)=>String(v+1), suctText);
+      zeig('waterVal',   gewaehlt.map(effWasser), (v)=>String(v));
     }
     // Sperren, was der eingestellte Modus gar nicht nutzt: beim reinen Saugen gibt es
     // keine Wassermenge, beim reinen Wischen keine Saugstaerke. Ohne Auswahl ist beides
