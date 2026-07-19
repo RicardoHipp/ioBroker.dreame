@@ -2163,13 +2163,35 @@
   // Codes, die HA nur als WARNUNG fuehrt (types.py WARNING_ERROR_CODE) — kein Defekt,
   // sondern ein Hinweis. Werden gelb statt rot angezeigt.
   //
-  // NOCH NICHT portiert: HA unterdrueckt Code 68 (Wischpad demontieren) ganz, wenn das
-  // Geraet eine Waschstation hat (device.py 8570) — dort muss man das Pad ja nicht
-  // abnehmen. Bewusst erst einmal weggelassen, um zu sehen, ob Einstufung und Text stimmen.
   const FEHLER_WARNUNG = new Set([9, 10, 20, 47, 51, 56, 68, 70, 71, 72, 75, 82, 85, 107, 114, 117, 121, 122, 123, 129, 213, 214]);
 
+  /**
+   * Meldungen, die HA gar nicht erst anzeigt — 1:1 aus device.py 8560-8572 (`error`).
+   * Alle vier Faelle, nicht nur der eine, der uns aufgefallen ist:
+   *
+   *   84  UNKNOWN_ERROR    — Sammelcode ohne Aussage
+   *   122 UNKNOWN_WARNING  — dito
+   *   20  BATTERY_LOW      — nur waehrend des Ladens: dass der Akku leer ist, waehrend er
+   *                          gerade geladen wird, ist keine Meldung wert
+   *   68  REMOVE_MOP       — bei Geraeten mit Waschstation: dort wird das Pad gewaschen und
+   *                          getrocknet, man muss es nicht abnehmen
+   *
+   * @param code  Fehlercode aus status.error
+   * @returns true, wenn die Meldung unterdrueckt werden soll
+   */
+  function fehlerUnterdruecken(code){
+    const n = Number(code);
+    if (n === 84 || n === 122) return true;
+    if (n === 20 && VST.charging === 1) return true;
+    // Waschstation vorhanden = das Geraet meldet self-wash-base-status. Dieselbe Pruefung
+    // wie bei kannWaschen() weiter unten; HA fragt dafuer capability.self_wash_base ab.
+    if (n === 68 && VST.wash != null) return true;
+    return false;
+  }
+
   const MELDUNGEN = [
-    { obj:'error', text:v=>FEHLER_DE[v] || ('Fehler ' + v), bei:v=>v>0,
+    { obj:'error', text:v=>FEHLER_DE[v] || ('Fehler ' + v),
+      bei:v=>v>0 && !fehlerUnterdruecken(v),
       schwer:v=>!FEHLER_WARNUNG.has(Number(v)) },
     { obj:'clean-water-tank-status',  text:()=>'Frischwassertank prüfen', bei:v=>v>0 },
     { obj:'dirty-water-tank-status',  text:()=>'Schmutzwassertank leeren',bei:v=>v>0 },
@@ -2269,7 +2291,12 @@
                               heiss?ICON.ST_HOT_DRYING:ICON.ST_DRYING,ICON_SIZE.charger,'above');
   }
   function setVst(key,val){ VST[key]=(val==null||val==='')?null:Number(val);
-    updateStatusPanel(); updateBadges(); updateStartPause(); }
+    updateStatusPanel(); updateBadges(); updateStartPause();
+    // Auch die Meldungen: ob eine unterdrueckt wird, haengt bei zwei Codes am
+    // Geraetezustand (Laden bzw. Waschstation vorhanden) — s. fehlerUnterdruecken.
+    // Ohne das bliebe "Akku leer" stehen, bis sich zufaellig ein anderer Wert aendert.
+    if (key === 'charging' || key === 'wash') updateInfo();
+  }
 
   // ===== Start / Pause =====
   // 1:1 aus HA: device.py started (9038-9058) bzw. deviceStatusFlags() in lib/haMap.js des

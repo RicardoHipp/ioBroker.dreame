@@ -94,8 +94,11 @@ Home-Assistant-Integration übernommen, damit sie zu dem passen, was andere Werk
 anzeigen.
 
 Außerdem wird unterschieden: Ein Teil der Meldungen ist gar kein Defekt, sondern nur ein
-Hinweis (etwa die Erinnerung, das Wischpad abzunehmen). Die erscheinen jetzt gelb, echte
-Störungen rot.
+Hinweis. Die erscheinen gelb, echte Störungen rot.
+
+Und Meldungen, die für das eigene Gerät gar nicht gelten, werden ganz weggelassen — etwa
+die Erinnerung „Wischpad demontieren" bei Robotern mit Waschstation, die das Pad ja selbst
+waschen und trocknen. Ebenso „Akku leer", solange der Roboter gerade lädt.
 
 ### Die Karte lässt sich drehen
 **Jetzt:** Im Zahnrad-Menü gibt es **Karte drehen** mit 0°, 90°, 180° und 270°. Nützlich,
