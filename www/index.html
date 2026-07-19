@@ -481,7 +481,7 @@
         <button class="tgl off" id="t-grid" title="Diagnose: Gitternetz auf den Zellgrenzen + Fadenkreuze an bekannten Weltkoordinaten. Zeigt, ob das Overlay auf den Kartenpixeln sitzt.">Raster</button>
       </div>
       <label class="slabel">Anzeigegröße: <b id="uiVal">100 %</b></label>
-      <input type="range" id="uiRange" min="100" max="200" step="5" value="100">
+      <input type="range" id="uiRange" min="75" max="200" step="5" value="100">
       <div class="pickrow" id="farbenRow" style="margin-top:12px">
         <span class="pk">Farben</span>
         <span class="pv"><span id="farbenVal">Automatisch</span></span>
@@ -713,11 +713,14 @@
     feld.value = location.origin + location.pathname + (s ? '?' + s : '');
   }
 
-  const UI_MIN = 1, UI_MAX = 2;
+  // Untergrenze 75 %: darunter faellt die Hoehe der Aktionsknoepfe unter 33 px, und
+  // 44 px sind das gaengige Mindestmass fuer eine Tippflaeche. Kleiner waere nur noch
+  // zum Anschauen brauchbar, nicht mehr zum Bedienen.
+  const UI_MIN = 0.75, UI_MAX = 2;
   let uiFaktor = 1;
   {
     const ausAdresse = parseFloat(_par.get('ui'));
-    if (ausAdresse >= 100 && ausAdresse <= 200) uiFaktor = ausAdresse / 100;
+    if (ausAdresse >= UI_MIN * 100 && ausAdresse <= UI_MAX * 100) uiFaktor = ausAdresse / 100;
     else { try { const g = parseFloat(localStorage.getItem('dreame.ui'));
                  if (g >= UI_MIN && g <= UI_MAX) uiFaktor = g; } catch (e) {} }
   }
