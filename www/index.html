@@ -44,22 +44,17 @@
   /* Ueberschrift der Bedienspalte mit dem Zahnrad rechts daneben */
   .sidehead{display:flex; align-items:center; gap:8px; margin-bottom:12px; position:relative}
   .sidehead h2{margin:0; flex:1}
-  /* Zahnrad + Einstellungs-Popover (Ansicht + Räume ein/ausblenden) */
-  .gearwrap{position:static;}
+  /* Zahnrad. Das Menue dahinter ist ein normaler Dialog (#gearOvl), kein Ausklappmenue —
+     dadurch gibt es im Widget nur ein Muster fuer Dialoge, und nichts kann von der
+     rollenden Spalte abgeschnitten werden. */
   .gear{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);
     background:var(--panel);color:var(--txt);line-height:1;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;transition:.12s;}
+    display:flex;align-items:center;justify-content:center;transition:.12s;flex:none}
   .gear:hover{background:var(--panel2)}
   .gear:active{transform:scale(.92)}
   .gear.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-  /* Das Popover spannt sich ueber die ganze Spaltenbreite (left:0/right:0 an .sidehead).
-     Wichtig, weil die Spalte senkrecht rollt: alles, was seitlich darueber hinausragt,
-     wuerde abgeschnitten. So bleibt es innerhalb und rollt notfalls einfach mit. */
-  .gearpop{position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:50;
-    background:var(--panel);border:1px solid var(--line);border-radius:12px;
-    box-shadow:0 12px 34px rgba(0,0,0,.32);padding:14px 16px;display:none;}
-  .gearpop.open{display:block;}
-  .gearpop h2:first-child{margin-top:0}
+  #gearOvl h2{margin-top:16px}
+  #gearOvl h2:first-of-type{margin-top:0}
   /* Karte und Bedienspalte nebeneinander, beide auf voller Hoehe.
      KEINE Prozenthoehen hier drin: die brauchen einen bestimmten Bezugswert, und den gab
      es nicht — daher endete die Spalte mitten im Bild. Stattdessen streckt der Flexaufbau
@@ -298,22 +293,7 @@
       <div class="side"><div class="sidein">
         <div class="sidehead">
           <h2>Reinigung</h2>
-          <div class="gearwrap">
-            <button class="gear" id="gearBtn" title="Einstellungen" aria-label="Einstellungen"></button>
-            <div class="gearpop" id="gearPop">
-              <h2>Ansicht</h2>
-              <div class="toggles">
-                <button class="tgl" id="t-trail">Spur</button>
-                <button class="tgl off" id="t-changes" title="Rot = seit Reinigungsstart geändert">Änderungen</button>
-                <button class="tgl" id="t-smooth" title="An: Roboter fährt die Strecke flüssig ab, hinkt der gemeldeten Position dafür bis zu einem Paket (~3 s) hinterher. Aus: springt alle ~3 s exakt auf die gemeldete Position.">Flüssig</button>
-                <button class="tgl off" id="t-grid" title="Diagnose: Gitternetz auf den Zellgrenzen + Fadenkreuze an bekannten Weltkoordinaten. Zeigt, ob das Overlay auf den Kartenpixeln sitzt.">Raster</button>
-              </div>
-              <label class="slabel">Anzeigegröße: <b id="uiVal">100 %</b></label>
-              <input type="range" id="uiRange" min="100" max="200" step="5" value="100">
-              <h2 style="margin-top:16px">Räume</h2>
-              <div class="roomlist" id="roomList"></div>
-            </div>
-          </div>
+          <button class="gear" id="gearBtn" title="Einstellungen" aria-label="Einstellungen"></button>
         </div>
         <div class="clean" id="cleanPanel">
           <div class="selroom" id="selRoomName">Raum antippen zum Wählen</div>
@@ -365,6 +345,27 @@
   </div>
 
   <!-- Auswahl-Overlay (wird von den .pickrow-Zeilen geoeffnet) -->
+  <!-- Einstellungen. Bewusst dieselbe Overlay-Bauart wie die anderen Dialoge (mittig,
+       abgedunkelter Hintergrund) statt eines Ausklappmenues am Zahnrad — im Widget soll
+       es nur EIN Muster fuer Dialoge geben. -->
+  <div class="ovl" id="gearOvl">
+    <div class="ovlbox">
+      <h3>Einstellungen</h3>
+      <h2>Ansicht</h2>
+      <div class="toggles">
+        <button class="tgl" id="t-trail">Spur</button>
+        <button class="tgl off" id="t-changes" title="Rot = seit Reinigungsstart geändert">Änderungen</button>
+        <button class="tgl" id="t-smooth" title="An: Roboter fährt die Strecke flüssig ab, hinkt der gemeldeten Position dafür bis zu einem Paket (~3 s) hinterher. Aus: springt alle ~3 s exakt auf die gemeldete Position.">Flüssig</button>
+        <button class="tgl off" id="t-grid" title="Diagnose: Gitternetz auf den Zellgrenzen + Fadenkreuze an bekannten Weltkoordinaten. Zeigt, ob das Overlay auf den Kartenpixeln sitzt.">Raster</button>
+      </div>
+      <label class="slabel">Anzeigegröße: <b id="uiVal">100 %</b></label>
+      <input type="range" id="uiRange" min="100" max="200" step="5" value="100">
+      <h2 style="margin-top:16px">Räume</h2>
+      <div class="roomlist" id="roomList"></div>
+      <button class="ovlclose" id="gearClose">Schließen</button>
+    </div>
+  </div>
+
   <div class="ovl" id="pickOvl">
     <div class="ovlbox">
       <h3 id="pickTitle">Auswahl</h3>
@@ -2053,11 +2054,23 @@
   function setupZoom(){
     if(zoomBound) return; zoomBound=true;
     // Einstellungs-Popover (Zahnrad): Ansicht-Toggles + Raumliste ein/ausblenden
-    const gearBtn=document.getElementById('gearBtn'), gearPop=document.getElementById('gearPop');
-    const setGear=(open)=>{ gearPop.classList.toggle('open',open); gearBtn.classList.toggle('on',open); };
-    gearBtn.addEventListener('click', e=>{ e.stopPropagation(); setGear(!gearPop.classList.contains('open')); });
-    gearPop.addEventListener('click', e=>e.stopPropagation());        // Klick im Panel schliesst nicht
-    document.addEventListener('click', ()=>setGear(false));           // Klick daneben schliesst
+    const gearBtn=document.getElementById('gearBtn'), gearOvl=document.getElementById('gearOvl');
+    // Einstellungen als mittiger Dialog wie alle anderen. oeffneOvl merkt sich den
+    // Zeitpunkt — ohne das wuerde der nachgereichte Klick einer Beruehrung das Fenster
+    // sofort wieder schliessen (s. Kommentar bei oeffneOvl).
+    const setGear=(open)=>{
+      gearOvl.classList.toggle('open', open);
+      gearBtn.classList.toggle('on', open);
+      if (open) ovlAufSeit = (window.performance ? performance.now() : Date.now());
+    };
+    gearBtn.addEventListener('click', ()=> setGear(true));
+    document.getElementById('gearClose').onclick = ()=> setGear(false);
+    gearOvl.addEventListener('click', (e)=>{
+      if (e.target !== gearOvl) return;                               // nur der Rand schliesst
+      const jetzt = (window.performance ? performance.now() : Date.now());
+      if (jetzt - ovlAufSeit < OVL_SPERRE) return;
+      setGear(false);
+    });
     document.addEventListener('keydown', e=>{ if(e.key==='Escape') setGear(false); });
     stage.addEventListener('wheel', e=>{ e.preventDefault(); zoomAt(e.clientX,e.clientY, e.deltaY<0?1.15:1/1.15); }, {passive:false});
     let drag=false, lx=0, ly=0, sx0=0, sy0=0, downT=null;
