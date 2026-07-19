@@ -2822,6 +2822,56 @@ class Dreame extends utils.Adapter {
    * Capability detection follows HA (types.py 3226): a self-wash base together with an
    * auto-empty base implies a liftable pad. Both show up as device properties.
    */
+  /**
+   * Liest den Rohwert einer zusammengesetzten Eigenschaft gezielt vom Geraet.
+   *
+   * Hintergrund: In Eigenschaften wie 4-23 stecken mehrere Angaben in einer Zahl. Um nur
+   * eine davon zu aendern, muss der aktuelle Wert bekannt sein — sonst wuerden die anderen
+   * ueberschrieben. Der Adapter merkt sich den Wert aus MQTT-Meldungen; nach einem Neustart
+   * ist diese Erinnerung leer, und bis der Roboter von sich aus meldet, war ein Schreiben
+   * bisher unmoeglich.
+   *
+   * Die grosse Sammelabfrage beim Start (spec update) hilft nicht: sie scheitert fuer
+   * Dienst 4 mit code 80001. Die EINZELNE Abfrage ueber sendCommand beantwortet das Geraet
+   * dagegen — nachgewiesen an 4-51 und 6-8, die auf diesem Weg Werte liefern.
+   *
+   * @param did   Geraete-ID
+   * @param siid  Dienst
+   * @param piid  Eigenschaft
+   * @returns Rohwert oder undefined, wenn er sich nicht lesen laesst
+   */
+  async _holeRohwert(did, siid, piid) {
+    const key = `${siid}-${piid}`;
+    this.log.debug(`[ROHWERT] ${key} unbekannt — frage das Geraet gezielt ab`);
+    try {
+      const antwort = await this.sendCommand({
+        did: did,
+        method: 'get_properties',
+        params: [{ did: did, siid: siid, piid: piid }],
+      });
+      const res = antwort && (antwort.result !== undefined ? antwort.result : antwort);
+      const eintrag = Array.isArray(res) ? res[0] : (res && Array.isArray(res.out) ? res.out[0] : null);
+      this.log.debug(`[ROHWERT] ${key} Antwort: ${JSON.stringify(antwort)}`);
+      if (!eintrag || eintrag.code !== 0 || eintrag.value === undefined || eintrag.value === null) {
+        this.log.debug(`[ROHWERT] ${key} keine brauchbare Antwort (code ${eintrag && eintrag.code})`);
+        return undefined;
+      }
+      const wert = Number(eintrag.value);
+      if (!Number.isFinite(wert)) {
+        this.log.debug(`[ROHWERT] ${key} Wert ist keine Zahl: ${JSON.stringify(eintrag.value)}`);
+        return undefined;
+      }
+      // Merken, damit die Abfrage nur einmal noetig ist
+      this.compoundRaw[did] = this.compoundRaw[did] || {};
+      this.compoundRaw[did][key] = wert;
+      this.log.info(`[ROHWERT] ${key} vom Geraet gelesen: ${wert}`);
+      return wert;
+    } catch (e) {
+      this.log.debug(`[ROHWERT] ${key} Abfrage fehlgeschlagen: ${(e && e.message) || e}`);
+      return undefined;
+    }
+  }
+
   _swapCleaningMode(did, key, mode) {
     if (key !== '4-23' || (mode !== 0 && mode !== 2)) return mode;
     const props = this.specPropsToIdDict[did];
@@ -5755,14 +5805,15 @@ class Dreame extends utils.Adapter {
             writeValue = state.val ? 1 : 0;
           }
           if (compoundMeta?.encode) {
-            const rawCompound = this.compoundRaw?.[deviceId]?.[compoundKey];
+            // Fetch the raw value on demand if unknown (see _holeRohwert).
+            let rawCompound = this.compoundRaw?.[deviceId]?.[compoundKey];
             if (rawCompound === undefined) {
-              // SIID 4 never responds to HTTP get_properties (code:80001); raw value
-              // arrives only via MQTT push. Refuse the write rather than silently
-              // destroying the packed bits (humidity, area) with rawCompound=0.
+              rawCompound = await this._holeRohwert(deviceId, wSiid, wPiid);
+            }
+            if (rawCompound === undefined) {
               this.log.warn(
-                `Write aborted for ${compoundKey}: raw compound not yet received from device. ` +
-                `Trigger an MQTT push first (e.g. change a setting in the app).`,
+                `Write aborted for ${compoundKey}: raw compound unknown and could not be read ` +
+                `from the device. Change the setting in the Dreame app once, then retry.`,
               );
               return;
             }
