@@ -139,6 +139,10 @@
   .rlabel{font-weight:800; letter-spacing:.2px; text-anchor:middle; dominant-baseline:middle;
     font-size:13px; filter:drop-shadow(0 1px 1px rgba(255,255,255,.7)); pointer-events:none;}
   .rbadge{cursor:pointer; color:var(--txt)}
+  /* Einheitlich-Betrieb: das Badge zeigt nur noch an. pointer-events:none laesst den Tipp
+     zur Raumflaeche darunter durch — antippen waehlt den Raum ab, statt ins Leere zu
+     greifen. Ohne das faenge die Trefferflaeche (.hit) den Tipp ab. */
+  .rbadge.starr{cursor:inherit; pointer-events:none}
   .rbadge .pille{fill:var(--panel); stroke:var(--line); stroke-width:1; opacity:.96}
   .rbadge .hit{fill:transparent}          /* deckungsgleich mit der Pille, s. baueBadge */
   /* central statt middle: middle zentriert auf der halben x-Hoehe (Hoehe eines kleinen
@@ -1254,11 +1258,17 @@
    * Das ganze Badge ist die Schaltflaeche fuer die Raum-Einstellungen.
    */
   function baueBadge(id){
+    // Im Einheitlich-Betrieb gilt fuer JEDEN Raum derselbe Geraetewert — dann zeigt das
+    // Badge genau den, nicht den je Raum gespeicherten cleanset-Wert. Und es fuehrt dort
+    // nirgendwo hin: die Raum-Einstellungen wirken nur im Individuell-Betrieb, also kein
+    // Zahnrad und kein Tipp-Ziel (s. Klasse "starr" unten).
+    const einheitlich = !customizedCleaning;
     const teile = [];
-    if (raumSaugt(id))  teile.push(['saugen', String(effSaug(id) + 1)]);   // Anzeige 1-4, intern 0-3
-    if (raumWischt(id)) teile.push(['wasser', String(effWasser(id))]);
+    // Anzeige 1-4, intern 0-3
+    if (raumSaugt(id))  teile.push(['saugen', String((einheitlich ? globalSaug : effSaug(id)) + 1)]);
+    if (raumWischt(id)) teile.push(['wasser', String(einheitlich ? globalWasser : effWasser(id))]);
     if (raumWdh(id) > 1) teile.push(['wiederholung', String(raumWdh(id))]);
-    teile.push(['einstellungen', null]);                                    // Hinweis: hier tippen
+    if (!einheitlich) teile.push(['einstellungen', null]);                   // Hinweis: hier tippen
 
     let breite = BDG.rand * 2;
     for (const [, wert] of teile){
@@ -1268,7 +1278,7 @@
     breite -= BDG.abstand;
 
     const g = document.createElementNS(NS,'g');
-    g.setAttribute('class','rbadge'); g.dataset.raum = id;
+    g.setAttribute('class', einheitlich ? 'rbadge starr' : 'rbadge'); g.dataset.raum = id;
     const x0 = -breite / 2;
     const kasten = (klasse, x, y, w, h, r) => {
       const e = document.createElementNS(NS,'rect');
