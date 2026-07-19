@@ -85,6 +85,14 @@ sofort wieder weg. Mit der Maus am PC ging es.
 und wächst mit der eingestellten Anzeigegröße mit, und ein Antippen wird nicht mehr als
 Verschieben der Karte gewertet, wenn der Finger dabei ein paar Pixel verrutscht.
 
+### Die Karte lässt sich drehen
+**Jetzt:** Im Zahnrad-Menü gibt es **Karte drehen** mit 0°, 90°, 180° und 270°. Nützlich,
+wenn die Karte auf einem Wandtablett anders herum stehen soll, als der Roboter sie liefert.
+
+**Die Raumnamen und die Symbole an den Räumen drehen sich nicht mit** — sie bleiben immer
+waagerecht lesbar. Der Roboter dreht sich dagegen mit, sonst zeigte seine Fahrtrichtung
+in die falsche Richtung.
+
 ### Farben und Hintergrund lassen sich einstellen
 **Vorher:** Hell oder dunkel richtete sich immer nach dem Gerät, der Hintergrund war
 immer gefüllt.

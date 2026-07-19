@@ -494,6 +494,10 @@
         <span class="pk">Bedienung</span>
         <span class="pv"><span id="leisteVal">Rechts</span></span>
       </div>
+      <div class="pickrow" id="drehRow">
+        <span class="pk">Karte drehen</span>
+        <span class="pv"><span id="drehVal">0°</span></span>
+      </div>
       <!-- Ein Regler für zwei Werte: senkrecht stellt er die Breite, waagerecht die Höhe.
            Beschriftung und Bereich wechseln mit der Lage (s. setzeLeistenGroesse). -->
       <label class="slabel" style="margin-top:10px;display:block">
@@ -610,9 +614,19 @@
     { id:'unten',  name:'Unten',  desc:'Als Leiste über die volle Breite' },
     { id:'oben',   name:'Oben',   desc:'Als Leiste über die volle Breite' },
   ];
+  // Vierteldrehungen statt freiem Winkel: die Karte bleibt pixelscharf, und das Geraet
+  // selbst kennt fuer seine Kartendrehung ebenfalls nur Vielfache von 90 Grad.
+  const DREHUNG = [
+    { id:'0',   name:'0°',   desc:'Wie vom Roboter geliefert' },
+    { id:'90',  name:'90°',  desc:'Eine Vierteldrehung im Uhrzeigersinn' },
+    { id:'180', name:'180°', desc:'Auf den Kopf' },
+    { id:'270', name:'270°', desc:'Eine Vierteldrehung gegen den Uhrzeigersinn' },
+  ];
   let farbWahl   = holeWahl('farben', ['auto','hell','dunkel'], 'auto');
   let hgWahl     = holeWahl('hintergrund', ['gefuellt','transparent'], 'gefuellt');
   let leisteWahl = holeWahl('leiste', LEISTE.map(l=>l.id), 'rechts');
+  // Als Zahl gehalten, weil damit gerechnet wird (applyT, hitRoom, visibleBox).
+  let kartenDrehung = Number(holeWahl('drehung', DREHUNG.map(d=>d.id), '0'));
 
   // Groesse der Bedienleiste. Zwei getrennte Werte, weil sie nicht dasselbe meinen:
   // senkrecht zaehlt die Breite, waagerecht die Hoehe. Ein gemeinsamer Wert wuerde beim
@@ -682,13 +696,16 @@
     const fv = document.getElementById('farbenVal');
     const hv = document.getElementById('hgVal');
     const lv = document.getElementById('leisteVal');
+    const dv = document.getElementById('drehVal');
     if (fv) fv.textContent = (FARBEN.find(f=>f.id===farbWahl)||FARBEN[0]).name;
     if (hv) hv.textContent = (HINTERGRUND.find(h=>h.id===hgWahl)||HINTERGRUND[0]).name;
     if (lv) lv.textContent = (LEISTE.find(l=>l.id===leisteWahl)||LEISTE[0]).name;
+    if (dv) dv.textContent = kartenDrehung + '°';
     if (merken){
       try { localStorage.setItem('dreame.farben', farbWahl);
             localStorage.setItem('dreame.hintergrund', hgWahl);
-            localStorage.setItem('dreame.leiste', leisteWahl); } catch (e) {}
+            localStorage.setItem('dreame.leiste', leisteWahl);
+            localStorage.setItem('dreame.drehung', String(kartenDrehung)); } catch (e) {}
     }
     baueAdresse();
     // Die Karte kann jetzt anders viel Platz haben (bei oben/unten aendert sich die
@@ -706,6 +723,7 @@
     if (farbWahl !== 'auto') p.set('farben', farbWahl);
     if (hgWahl !== 'gefuellt') p.set('hintergrund', hgWahl);
     if (leisteWahl !== 'rechts') p.set('leiste', leisteWahl);
+    if (kartenDrehung) p.set('drehung', String(kartenDrehung));
     if (lgWert.breite !== LG.breite.standard) p.set('breite', String(lgWert.breite));
     if (lgWert.hoehe  !== LG.hoehe.standard)  p.set('hoehe',  String(lgWert.hoehe));
     if (uiFaktor !== 1) p.set('ui', String(Math.round(uiFaktor * 100)));
@@ -1153,14 +1171,17 @@
    * uiFaktor legt sich als reine Vergroesserung darueber: unabhaengig vom Kartenzoom,
    * aber insgesamt groesser (inkl. der 44-Pixel-Tippflaeche).
    */
-  let markScale = null, markUi = null;
+  let markScale = null, markUi = null, markDreh = null;
   function skaliereMarken(erzwingen){
-    if (!erzwingen && markScale === scale && markUi === uiFaktor) return;
-    markScale = scale; markUi = uiFaktor;
+    if (!erzwingen && markScale === scale && markUi === uiFaktor && markDreh === kartenDrehung) return;
+    markScale = scale; markUi = uiFaktor; markDreh = kartenDrehung;
     const s = uiFaktor / (cell * scale);
+    // Gegendrehung: die Marke sitzt in der gedrehten Karte, soll aber waagerecht lesbar
+    // bleiben. Reihenfolge zaehlt — erst an den Ort, dort zurueckdrehen, dann skalieren.
+    const dreh = kartenDrehung ? ` rotate(${-kartenDrehung})` : '';
     for (const id of Object.keys(markEls)){
       const g = markEls[id];
-      g.setAttribute('transform', `translate(${g.dataset.x} ${g.dataset.y}) scale(${s})`);
+      g.setAttribute('transform', `translate(${g.dataset.x} ${g.dataset.y})${dreh} scale(${s})`);
     }
     skaliereStationHit();
   }
@@ -1585,7 +1606,11 @@
   // Klick-Koordinaten -> Raum-ID (Canvas ist Y-gespiegelt; wrap ist per translate/scale transformiert)
   function hitRoom(clientX, clientY){
     const r=stage.getBoundingClientRect();
-    const cxp=(clientX-r.left-tx)/scale, cyp=(clientY-r.top-ty)/scale; // Canvas-Pixel (MAPW×MAPH)
+    // Bildschirmpunkt zurueck in Kartenpixel: erst Verschiebung und Zoom herausrechnen,
+    // dann die Drehung ZURUECK (deshalb das Minus) — sonst waehlt man bei gedrehter
+    // Karte den Raum aus, der ungedreht an dieser Stelle laege.
+    let cxp=(clientX-r.left-tx)/scale, cyp=(clientY-r.top-ty)/scale; // Canvas-Pixel (MAPW×MAPH)
+    if (kartenDrehung) [cxp,cyp] = drehePunkt(cxp, cyp, -kartenDrehung);
     const ox=Math.floor(cxp/cell), oy=Math.floor(cyp/cell);
     if (ox<0||oy<0||ox>=W||oy>=He) return null;
     const t=raw[mapStart + (He-1-oy)*W + ox];
@@ -2337,7 +2362,29 @@
   // ---- Zoom / Pan ----
   // skaliereMarken haelt Raumnamen und Badges in konstanter Groesse; es prueft selbst,
   // ob sich der Zoom ueberhaupt geaendert hat (beim Verschieben aendert er sich nicht).
-  const applyT=()=>{ wrap.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`; skaliereMarken(); };
+  /**
+   * Drehpunkt fuer die Kartendrehung: die Mitte der Karte.
+   * Die Drehung MUSS in der Kette stehen und darf nicht ueber transform-origin laufen —
+   * das steht auf 0 0, damit translate/scale die einfache Form "Bildpunkt = (tx,ty) + s·p"
+   * behalten. Daran haengen zoomAt, clamp und hitRoom. Ein anderer Ursprung wuerde alle
+   * drei stillschweigend verschieben.
+   */
+  const drehMitte = () => [MAPW/2, MAPH/2];
+  const applyT=()=>{
+    const [cx,cy] = drehMitte();
+    const d = kartenDrehung
+      ? ` translate(${cx}px,${cy}px) rotate(${kartenDrehung}deg) translate(${-cx}px,${-cy}px)`
+      : '';
+    wrap.style.transform=`translate(${tx}px,${ty}px) scale(${scale})${d}`;
+    skaliereMarken();
+  };
+  /** Punkt um die Kartenmitte drehen (Winkel in Grad, mathematisch positiv = im Uhrzeigersinn). */
+  function drehePunkt(x, y, grad){
+    if (!grad) return [x, y];
+    const [cx,cy] = drehMitte();
+    const a = grad * Math.PI/180, dx = x-cx, dy = y-cy;
+    return [cx + dx*Math.cos(a) - dy*Math.sin(a), cy + dx*Math.sin(a) + dy*Math.cos(a)];
+  }
   function visibleBox(){
     let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,any=false;
     for(const id of Object.keys(rooms)){
@@ -2345,7 +2392,16 @@
       x0=Math.min(x0,r.minX*cell); x1=Math.max(x1,(r.maxX+1)*cell);
       y0=Math.min(y0,(He-1-r.maxY)*cell); y1=Math.max(y1,(He-1-r.minY+1)*cell);
     }
-    return any ? {x0,y0,x1,y1} : {x0:0,y0:0,x1:MAPW,y1:MAPH};
+    const b = any ? {x0,y0,x1,y1} : {x0:0,y0:0,x1:MAPW,y1:MAPH};
+    if (!kartenDrehung) return b;
+    // Gedrehtes Rechteck: die vier Ecken drehen und neu umschliessen. Bei Vierteldrehungen
+    // bleibt das Ergebnis achsenparallel, Breite und Hoehe tauschen bei 90 und 270.
+    // Damit brauchen clamp() und fitVisible() keine Aenderung — sie bekommen schlicht die
+    // Ausdehnung, die auf dem Bildschirm wirklich belegt wird.
+    const ecken = [[b.x0,b.y0],[b.x1,b.y0],[b.x1,b.y1],[b.x0,b.y1]]
+      .map(([x,y]) => drehePunkt(x, y, kartenDrehung));
+    const xs = ecken.map(p=>p[0]), ys = ecken.map(p=>p[1]);
+    return { x0:Math.min(...xs), y0:Math.min(...ys), x1:Math.max(...xs), y1:Math.max(...ys) };
   }
   function clamp(){
     const sw=stage.clientWidth, sh=stage.clientHeight;
@@ -2430,6 +2486,14 @@
       (id)=>{ hgWahl = id; setzeAussehen(true); });
     document.getElementById('leisteRow').onclick = ()=> openPicker('Bedienung', LEISTE, leisteWahl,
       (id)=>{ leisteWahl = id; setzeAussehen(true); });
+    document.getElementById('drehRow').onclick = ()=> openPicker('Karte drehen', DREHUNG,
+      String(kartenDrehung), (id)=>{
+        kartenDrehung = Number(id);
+        // Der belegte Bereich hat sich geaendert (bei 90/270 tauschen Breite und Hoehe),
+        // deshalb neu einpassen statt nur neu zu zeichnen.
+        setzeAussehen(true);
+        try { box = visibleBox(); fitVisible(); } catch (e) {}
+      });
     const lgR = document.getElementById('lgRange');
     lgR.oninput  = ()=> setzeLeistenGroesse(+lgR.value, false);
     lgR.onchange = ()=> setzeLeistenGroesse(+lgR.value, true);
