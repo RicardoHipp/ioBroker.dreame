@@ -152,8 +152,13 @@
   .rbadge text{font-size:12px; font-weight:800; dominant-baseline:central;
     fill:var(--txt); text-anchor:start; user-select:none}
   /* Zahl im Reihenfolge-Kreis: weiss und mittig. Muss als Klasse gesetzt werden — die
-     Regel darueber ist staerker als ein fill-/text-anchor-Attribut am Element. */
-  .rbadge text.nr{fill:#fff; text-anchor:middle}
+     Regel darueber ist staerker als ein fill-/text-anchor-Attribut am Element.
+     tabular-nums gibt allen Ziffern dieselbe Laufweite: die "1" ist sonst schmaler als
+     ihr Platz und sitzt dadurch sichtbar links von der Mitte.
+     Etwas leichter als die uebrigen Badge-Zahlen (700 statt 800) — auf der farbigen
+     Flaeche wirkt gleiche Staerke klobiger als auf hellem Grund. */
+  .rbadge text.nr{fill:#fff; text-anchor:middle; font-weight:700;
+    font-variant-numeric:tabular-nums}
   .rbadge .zr{opacity:.55}                /* Zahnrad nur andeuten */
   .stationhit{cursor:pointer}
   .trail{fill:none; stroke:#ffffff; stroke-width:1.1; stroke-linejoin:round;
