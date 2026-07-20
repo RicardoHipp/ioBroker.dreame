@@ -1045,6 +1045,8 @@
   // Diese Faehigkeit ist immer an, wenn es die Route ueberhaupt gibt (types.py 3214-3215:
   // sie wird nur bei fehlendem cleaning_route abgeschaltet) — bei uns also stets.
   const RAUM_ROUTEN = CLEAN_ROUTES.filter((r) => r.id !== 4);
+  // Icon je Route (Badge und Auswahlliste). Namen s. extractLucide.js.
+  const ROUTE_IKON = { 1:'routeStandard', 2:'routeIntensiv', 3:'routeTief', 4:'routeSchnell' };
   function zeigeRoute(){
     const el = document.getElementById('routeVal');
     if (el) el.textContent = routeOf(cleanRoute).name;
@@ -1294,6 +1296,13 @@
     if (raumSaugt(id))  teile.push(['saugen', String((einheitlich ? globalSaug : raumSaug(id)) + 1)]);
     if (raumWischt(id)) teile.push(['wasser', String(einheitlich ? globalWasser : raumWasser(id))]);
     if (raumWdh(id) > 1) teile.push(['wiederholung', String(raumWdh(id))]);
+    // Route nur, wenn der Raum AUSSCHLIESSLICH wischt — dieselbe Bedingung, unter der sie
+    // sich auch einstellen laesst (HA select.py 676-679: cleaning_mode is MOPPING).
+    // Ohne Zahl: die vier Stufen haben keine sinnvolle Nummer, das Icon steht fuer sich.
+    if (raumWischt(id) && !raumSaugt(id)) {
+      const r = einheitlich ? cleanRoute : ((roomCleanset[id] && roomCleanset[id][5]) || 1);
+      if (ROUTE_IKON[r]) teile.push([ROUTE_IKON[r], null]);
+    }
     if (!nurAnzeige) teile.push(['einstellungen', null]);                   // Hinweis: hier tippen
 
     let breite = BDG.rand * 2;

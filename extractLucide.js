@@ -27,6 +27,18 @@ const AUS_LUCIDE = {
   anAus:         'Circle',        // Ansicht-Schalter aus (vorher '●' in Grau)
   wasser:        'Droplet',       // Badge: Wassermenge
   wiederholung:  'Repeat',        // Badge: nur wenn > 1
+  // --- Reinigungsroute (Badge + Auswahl). HA nutzt Material-Icons (select.py 168-173),
+  //     die es in Lucide nicht gibt — hier die sinngemaess naechsten:
+  //       sine-wave             -> WavesHorizontal  (Wellenlinie, gleiches Motiv)
+  //       swap-vertical-variant -> ArrowUpDown      (identisches Motiv)
+  //       heating-coil          -> Shell            (Spirale; Lucide hat keine Heizspirale)
+  //       truck-fast-outline    -> Zap              (Motiv anders, Bedeutung "schnell"
+  //                                                  liest sich in Badge-Groesse besser
+  //                                                  als ein Lieferwagen)
+  routeStandard: 'WavesHorizontal',
+  routeIntensiv: 'ArrowUpDown',
+  routeTief:     'Shell',
+  routeSchnell:  'Zap',
   // --- Zustandsleiste / Verbrauchsmaterial / Behaelter ---
   akku:          'Battery',
   akkuLaedt:     'BatteryCharging',
