@@ -105,10 +105,11 @@ Linie auf dem Balken. Der Balken endet an den Raumgrenzen, statt über Wände zu
 ### Raum-Einstellungen zeigen nur, was der Modus hergibt
 **Vorher:** Im Fenster eines Raums ließen sich Saugstärke und Wassermenge immer
 verstellen, auch wenn der Raum-Modus sie gar nicht nutzt. Eine Route gab es dort nicht.
-**Jetzt:** Steht der Raum auf „Wischen", ist die Saugstärke ausgegraut; steht er auf
-„Saugen", die Wassermenge. Neu ist die **Route** — sie erscheint nur beim reinen Wischen,
-denn nur dort wertet der Roboter sie je Raum aus. Zur Auswahl stehen Standard, Intensiv
-und Tief; „Schnell" gibt es nur für die gesamte Reinigung, nicht je Raum.
+**Jetzt:** Steht der Raum auf „Wischen", ist die Saugstärke gar nicht mehr da; steht er
+auf „Saugen", fehlt die Wassermenge. Neu ist die **Route** — sie erscheint nur beim reinen
+Wischen, denn nur dort wertet der Roboter sie je Raum aus. Zur Auswahl stehen Standard,
+Intensiv und Tief; „Schnell" gibt es nur für die gesamte Reinigung, nicht je Raum.
+Im Fenster steht also immer nur das, was für diesen Raum auch wirklich zählt.
 
 ### Die Route lässt sich einstellen
 **Vorher:** Die Route aus der App (Schnell, Standard, Intensiv, Tief) gab es im Widget

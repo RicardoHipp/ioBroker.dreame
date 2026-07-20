@@ -1587,16 +1587,14 @@
       // Gleiches Muster wie die globalen Regler im Panel: waehrend des Ziehens NUR
       // beschriften, den Wert erst beim Loslassen uebernehmen. fmt = Beschriftung
       // (Saugstaerke als Wort, Wassermenge als Zahl).
-      const regler = (label, min, max, val, onDone, fmt, aus) => {
+      const regler = (label, min, max, val, onDone, fmt) => {
         const zeig = fmt || ((v) => v);
         const w = document.createElement('div'); w.style.margin = '2px 0 12px';
-        if (aus) w.style.opacity = '.4';
         const l = document.createElement('label'); l.className = 'slabel';
         l.textContent = `${label}: `;
         const b = document.createElement('b'); b.textContent = zeig(val); l.appendChild(b);
         const i = document.createElement('input');
         i.type = 'range'; i.min = min; i.max = max; i.step = 1; i.value = val;
-        i.disabled = !!aus;
         reglerFuellung(i);
         i.oninput  = () => { b.textContent = zeig(+i.value); };
         i.onchange = () => { onDone(+i.value); aktualisiereKnoepfe(); };
@@ -1606,17 +1604,17 @@
       zeile('Modus', (ROOM_MODES.find((m) => m.id === entwurf.modus) || ROOM_MODES[0]).name,
         () => openPicker(name + ' — Modus', ROOM_MODES, entwurf.modus,
           (id) => { entwurf.modus = id; zeichne(); }));
-      // Was der Raum-Modus nicht nutzt, laesst sich auch nicht verstellen — 1:1 HAs
-      // segment_available_fn (select.py):
-      //   Saugstaerke  aus, wenn der Raum nur wischt   (Modus 1, select.py 539)
-      //   Wassermenge  aus, wenn der Raum nur saugt    (Modus 0, select.py 702)
-      regler('Saugstärke', 0, 3, entwurf.saug, (v) => { entwurf.saug = v; },
-        suctText, entwurf.modus === 1);
-      regler('Wassermenge', 1, 32, entwurf.wasser, (v) => { entwurf.wasser = v; },
-        null, entwurf.modus === 0);
-      // Route gibt es je Raum NUR beim reinen Wischen (select.py 676-679:
-      // segment.cleaning_mode is MOPPING). Sonst gar nicht erst anzeigen — anders als bei
-      // den Reglern, wo der Wert ja weiter gilt und nur nicht bedienbar ist.
+      // Was der Raum-Modus nicht nutzt, wird ausgeblendet — 1:1 die Bedingungen aus HAs
+      // segment_available_fn (select.py), nur konsequent als Ausblenden statt Sperren:
+      //   Saugstaerke  weg, wenn der Raum nur wischt   (Modus 1, select.py 539)
+      //   Wassermenge  weg, wenn der Raum nur saugt    (Modus 0, select.py 702)
+      //   Route        nur beim reinen Wischen         (Modus 1, select.py 676-679)
+      if (entwurf.modus !== 1) {
+        regler('Saugstärke', 0, 3, entwurf.saug, (v) => { entwurf.saug = v; }, suctText);
+      }
+      if (entwurf.modus !== 0) {
+        regler('Wassermenge', 1, 32, entwurf.wasser, (v) => { entwurf.wasser = v; });
+      }
       if (entwurf.modus === 1) {
         zeile('Route', routeOf(entwurf.route).name,
           () => openPicker(name + ' — Route', RAUM_ROUTEN, entwurf.route,
