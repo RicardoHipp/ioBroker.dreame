@@ -83,15 +83,20 @@
     background:var(--panel); border:1px solid var(--line); color:var(--muted);
     box-shadow:0 2px 8px rgba(0,0,0,.18); pointer-events:none; max-width:60%;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-  /* Platz fuer den Knopf links davor lassen — sonst liegt der Name darauf. */
-  .maptag.links{left:44px; color:var(--txt); font-weight:700}
+  .maptag.links{left:10px; color:var(--txt); font-weight:700}
   .maptag.rechts{right:10px}
-  /* Knopf auf der Karte, oben links vor dem Geraetenamen: Raum-Badges ein/aus.
-     Gleiche Form wie die Zoom-Knoepfe, nur kleiner — er sitzt neben einer Beschriftung,
-     nicht in einer eigenen Leiste. Anders als .maptag nimmt er Klicks an. */
-  .kartenbtn{position:absolute; top:10px; left:10px; z-index:6; zoom:var(--ui);
-    width:28px; height:28px; border-radius:999px; border:1px solid var(--line);
-    background:var(--panel); color:var(--muted); cursor:pointer;
+  /* Geraetename und der Knopf daneben als eine Einheit. Eine Reihe statt zweier
+     absoluter Positionen: der Name ist verschieden lang, der Knopf soll trotzdem immer
+     direkt dahinter sitzen. Innen wird die absolute Positionierung wieder aufgehoben,
+     und das Zoomen uebernimmt der Kasten — sonst wirkte es doppelt. */
+  .mapkopf{position:absolute; top:10px; left:10px; z-index:6; zoom:var(--ui);
+    display:flex; align-items:center; gap:7px; max-width:75%}
+  .mapkopf .maptag, .mapkopf .kartenbtn{position:static; top:auto; left:auto; zoom:1}
+  /* Knopf auf der Karte: Raum-Angaben ein/aus. Gleiche Form wie die Zoom-Knoepfe, nur
+     kleiner — er sitzt neben einer Beschriftung, nicht in einer eigenen Leiste.
+     Anders als .maptag nimmt er Klicks an. */
+  .kartenbtn{width:28px; height:28px; border-radius:999px; border:1px solid var(--line);
+    background:var(--panel); color:var(--muted); cursor:pointer; flex:none;
     display:grid; place-items:center; box-shadow:0 2px 8px rgba(0,0,0,.18)}
   .kartenbtn:hover{border-color:var(--accent); color:var(--txt)}
   .kartenbtn:active{transform:scale(.92)}
@@ -501,11 +506,14 @@
           <svg id="overlay"></svg>
         </div>
         <!-- Beschriftung der Karte: links der Roboter, rechts der Verbindungszustand.
-             Davor der Knopf, mit dem sich die Raum-Badges ausblenden lassen — waehrend
-             einer Reinigung verdecken sie sonst einen Teil der Karte. -->
-        <button class="kartenbtn" id="badgeBtn" type="button"
-                title="Raum-Angaben ausblenden" aria-label="Raum-Angaben ausblenden"></button>
-        <div class="maptag links" id="devName"></div>
+             Neben dem Namen der Knopf, mit dem sich die Raum-Angaben ausblenden lassen —
+             waehrend einer Reinigung verdecken sie sonst einen Teil der Karte. Nur dann
+             ist er auch da, sonst gibt es nichts auszublenden. -->
+        <div class="mapkopf">
+          <div class="maptag links" id="devName"></div>
+          <button class="kartenbtn" id="badgeBtn" type="button" hidden
+                  title="Raum-Angaben ausblenden" aria-label="Raum-Angaben ausblenden"></button>
+        </div>
         <div class="maptag rechts" id="conn">…</div>
         <div class="zoom">
           <button id="z-in" title="Zoom +" aria-label="Vergrößern"></button>
@@ -1435,6 +1443,9 @@
   /** Knopf auf der Karte: Symbol, Beschriftung und Zustand nachziehen. */
   function zeigeBadgeKnopf(){
     const b = document.getElementById('badgeBtn'); if (!b) return;
+    // Nur waehrend einer Reinigung. Ohne laufenden Auftrag zeigen die Badges an, was man
+    // gerade ausgewaehlt hat — da will man sie sehen, und es gibt nichts wegzuklicken.
+    b.hidden = !geraetGestartet();
     b.innerHTML = uiIcon(badgesAus ? 'badgeAus' : 'badgeAn', 15);
     b.classList.toggle('aus', badgesAus);
     b.title = badgesAus ? 'Raum-Angaben einblenden' : 'Raum-Angaben ausblenden';
@@ -1443,6 +1454,11 @@
   }
   function updateRoomBadges(){
     const laeuft = geraetGestartet();
+    // Nach dem Auftrag zuruecksetzen: der Knopf verschwindet dann, und ohne dieses
+    // Zuruecksetzen blieben die Badges ausgeblendet — ohne sichtbare Moeglichkeit,
+    // sie wiederzubekommen.
+    if (!laeuft && badgesAus) badgesAus = false;
+    zeigeBadgeKnopf();
     for (const id of Object.keys(markEls)){
       const g = markEls[id], alt = g.querySelector('.rbadge');
       if (alt) alt.remove();
@@ -2997,7 +3013,8 @@
       }
     });
     const bBtn = document.getElementById('badgeBtn');
-    if (bBtn) bBtn.onclick = ()=>{ badgesAus = !badgesAus; zeigeBadgeKnopf(); updateRoomBadges(); };
+    // updateRoomBadges zieht den Knopf selbst nach (Symbol, Beschriftung, Sichtbarkeit).
+    if (bBtn) bBtn.onclick = ()=>{ badgesAus = !badgesAus; updateRoomBadges(); };
     const ctr=()=>{ const r=stage.getBoundingClientRect(); return [r.left+r.width/2, r.top+r.height/2]; };
     document.getElementById('z-in').onclick =()=> zoomAt(...ctr(),1.3);
     document.getElementById('z-out').onclick=()=> zoomAt(...ctr(),1/1.3);
