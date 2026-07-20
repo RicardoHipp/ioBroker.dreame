@@ -98,6 +98,10 @@
   .mapkopf{position:absolute; top:10px; left:10px; z-index:6; zoom:var(--ui);
     display:flex; align-items:center; gap:7px; max-width:75%}
   .mapkopf .maptag, .mapkopf .kartenbtn{position:static; top:auto; left:auto; zoom:1}
+  /* Die 60% aus .maptag zaehlen hier vom Kasten, nicht mehr von der Karte — zusammen mit
+     dessen 75% blieb weniger als die Haelfte uebrig und der Name wurde abgeschnitten.
+     Die Begrenzung macht jetzt allein der Kasten. */
+  .mapkopf .maptag{max-width:none; min-width:0}
   /* Knopf auf der Karte: Raum-Angaben ein/aus. Gleiche Form wie die Zoom-Knoepfe, nur
      kleiner — er sitzt neben einer Beschriftung, nicht in einer eigenen Leiste.
      Anders als .maptag nimmt er Klicks an. */
