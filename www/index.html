@@ -151,6 +151,9 @@
      central zentriert auf der Mitte des Schriftkegels und passt fuer Ziffern. */
   .rbadge text{font-size:12px; font-weight:800; dominant-baseline:central;
     fill:var(--txt); text-anchor:start; user-select:none}
+  /* Zahl im Reihenfolge-Kreis: weiss und mittig. Muss als Klasse gesetzt werden — die
+     Regel darueber ist staerker als ein fill-/text-anchor-Attribut am Element. */
+  .rbadge text.nr{fill:#fff; text-anchor:middle}
   .rbadge .zr{opacity:.55}                /* Zahnrad nur andeuten */
   .stationhit{cursor:pointer}
   .trail{fill:none; stroke:#ffffff; stroke-width:1.1; stroke-linejoin:round;
@@ -1047,6 +1050,9 @@
   const RAUM_ROUTEN = CLEAN_ROUTES.filter((r) => r.id !== 4);
   // Icon je Route (Badge und Auswahlliste). Namen s. extractLucide.js.
   const ROUTE_IKON = { 1:'routeStandard', 2:'routeIntensiv', 3:'routeTief', 4:'routeSchnell' };
+  // Kennung fuer den Reihenfolge-Kreis im Badge. Kein Icon-Name, sondern ein eigener
+  // Bauteil-Typ (gefuellter Kreis mit Zahl darin) — s. baueBadge.
+  const NR = '#nr';
   function zeigeRoute(){
     const el = document.getElementById('routeVal');
     if (el) el.textContent = routeOf(cleanRoute).name;
@@ -1318,10 +1324,18 @@
     if (raumWdh(id) > 1) teile.push(['wiederholung', String(raumWdh(id))]);
     if (!nurAnzeige) teile.push(['einstellungen', null]);                   // Hinweis: hier tippen
 
+    // Platz in der Reihenfolge, ganz vorn. selectedRooms ist ein Set und behaelt damit die
+    // Reihenfolge, in der angetippt wurde — abwaehlen und neu antippen stellt einen Raum
+    // also ans Ende. Waehrend einer Fahrt gibt es keine Auswahl mehr, dann faellt die
+    // Nummer weg.
+    const platz = geraetGestartet() ? -1 : [...selectedRooms].indexOf(+id);
+    if (platz >= 0) teile.unshift([NR, String(platz + 1)]);
+
     let breite = BDG.rand * 2;
-    for (const [, wert] of teile){
+    for (const [name, wert] of teile){
       breite += BDG.ikon + BDG.abstand;
-      if (wert) breite += BDG.luecke + wert.length * BDG.ziffer;
+      // Bei der Nummer steht die Zahl IM Kreis, kostet also keine zusaetzliche Breite.
+      if (wert && name !== NR) breite += BDG.luecke + wert.length * BDG.ziffer;
     }
     breite -= BDG.abstand;
 
@@ -1345,6 +1359,22 @@
 
     let x = x0 + BDG.rand;
     for (const [name, wert] of teile){
+      if (name === NR){
+        // Gefuellter Kreis in der Raumfarbe, die Zahl weiss darin — wie in der App.
+        // Die kraeftige Variante (segGrp[1]) statt der hellen Flaechenfarbe, sonst hebt
+        // sich der Kreis auf der ohnehin hellen Pille nicht ab.
+        const k = document.createElementNS(NS,'circle');
+        k.setAttribute('cx', x + BDG.ikon/2); k.setAttribute('cy', 0);
+        k.setAttribute('r', BDG.ikon/2);
+        k.setAttribute('fill', rgbCss(segGrp(+id)[1]));
+        g.appendChild(k);
+        const t = document.createElementNS(NS,'text');
+        t.setAttribute('class','nr');
+        t.setAttribute('x', x + BDG.ikon/2); t.setAttribute('y', 0);
+        t.textContent = wert; g.appendChild(t);
+        x += BDG.ikon + BDG.abstand;
+        continue;
+      }
       const ik = svgIkon(name, BDG.ikon, name === 'einstellungen' ? 'zr' : null);
       if (ik){
         ik.setAttribute('transform',
