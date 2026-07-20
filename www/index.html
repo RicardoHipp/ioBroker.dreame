@@ -1040,6 +1040,11 @@
   const routenFuer = (m) => (m === 0 || m === 2)
     ? CLEAN_ROUTES.filter((r) => r.id !== 2 && r.id !== 3)
     : CLEAN_ROUTES.slice();
+  // Je Raum gilt eine andere Liste als global: HA baut sie ohne Modus-Bezug und nimmt
+  // "Schnell" heraus, sobald das Geraet segment_slow_clean_route kann (device.py 760-763).
+  // Diese Faehigkeit ist immer an, wenn es die Route ueberhaupt gibt (types.py 3214-3215:
+  // sie wird nur bei fehlendem cleaning_route abgeschaltet) — bei uns also stets.
+  const RAUM_ROUTEN = CLEAN_ROUTES.filter((r) => r.id !== 4);
   function zeigeRoute(){
     const el = document.getElementById('routeVal');
     if (el) el.textContent = routeOf(cleanRoute).name;
@@ -1558,6 +1563,7 @@
       wasser: cs[1],
       wdh:    cs[2],
       modus:  cs[4],
+      route:  cs[5] || 1,   // 0 = nicht gesetzt -> Standard, wie HA (select.py 683)
     };
     const entwurf = { ...start };
     const geaendert = () => Object.keys(start).some((k) => start[k] !== entwurf[k]);
@@ -1581,14 +1587,16 @@
       // Gleiches Muster wie die globalen Regler im Panel: waehrend des Ziehens NUR
       // beschriften, den Wert erst beim Loslassen uebernehmen. fmt = Beschriftung
       // (Saugstaerke als Wort, Wassermenge als Zahl).
-      const regler = (label, min, max, val, onDone, fmt) => {
+      const regler = (label, min, max, val, onDone, fmt, aus) => {
         const zeig = fmt || ((v) => v);
         const w = document.createElement('div'); w.style.margin = '2px 0 12px';
+        if (aus) w.style.opacity = '.4';
         const l = document.createElement('label'); l.className = 'slabel';
         l.textContent = `${label}: `;
         const b = document.createElement('b'); b.textContent = zeig(val); l.appendChild(b);
         const i = document.createElement('input');
         i.type = 'range'; i.min = min; i.max = max; i.step = 1; i.value = val;
+        i.disabled = !!aus;
         reglerFuellung(i);
         i.oninput  = () => { b.textContent = zeig(+i.value); };
         i.onchange = () => { onDone(+i.value); aktualisiereKnoepfe(); };
@@ -1598,9 +1606,22 @@
       zeile('Modus', (ROOM_MODES.find((m) => m.id === entwurf.modus) || ROOM_MODES[0]).name,
         () => openPicker(name + ' — Modus', ROOM_MODES, entwurf.modus,
           (id) => { entwurf.modus = id; zeichne(); }));
+      // Was der Raum-Modus nicht nutzt, laesst sich auch nicht verstellen — 1:1 HAs
+      // segment_available_fn (select.py):
+      //   Saugstaerke  aus, wenn der Raum nur wischt   (Modus 1, select.py 539)
+      //   Wassermenge  aus, wenn der Raum nur saugt    (Modus 0, select.py 702)
       regler('Saugstärke', 0, 3, entwurf.saug, (v) => { entwurf.saug = v; },
-        suctText);
-      regler('Wassermenge', 1, 32, entwurf.wasser, (v) => { entwurf.wasser = v; });
+        suctText, entwurf.modus === 1);
+      regler('Wassermenge', 1, 32, entwurf.wasser, (v) => { entwurf.wasser = v; },
+        null, entwurf.modus === 0);
+      // Route gibt es je Raum NUR beim reinen Wischen (select.py 676-679:
+      // segment.cleaning_mode is MOPPING). Sonst gar nicht erst anzeigen — anders als bei
+      // den Reglern, wo der Wert ja weiter gilt und nur nicht bedienbar ist.
+      if (entwurf.modus === 1) {
+        zeile('Route', routeOf(entwurf.route).name,
+          () => openPicker(name + ' — Route', RAUM_ROUTEN, entwurf.route,
+            (id) => { entwurf.route = id; zeichne(); }));
+      }
       zeile('Wiederholung', (ROOM_REPEATS.find((r) => r.id === entwurf.wdh) || ROOM_REPEATS[0]).name,
         () => openPicker(name + ' — Wiederholung', ROOM_REPEATS, entwurf.wdh,
           (id) => { entwurf.wdh = id; zeichne(); }));
@@ -1624,8 +1645,8 @@
 
     btnSave.onclick = () => {
       // nur die wirklich geaenderten Felder schreiben — jedes loest einen Geraetebefehl aus
-      const felder = { Level: 'saug', WaterVolume: 'wasser', Repeat: 'wdh', CleaningMode: 'modus' };
-      const pos    = { Level: 0, WaterVolume: 1, Repeat: 2, CleaningMode: 4 };
+      const felder = { Level: 'saug', WaterVolume: 'wasser', Repeat: 'wdh', CleaningMode: 'modus', Route: 'route' };
+      const pos    = { Level: 0, WaterVolume: 1, Repeat: 2, CleaningMode: 4, Route: 5 };
       const c = (roomCleanset[roomId] || cs).slice();
       for (const [feld, k] of Object.entries(felder)) {
         if (entwurf[k] !== start[k]) { cmd(`map.cleanset.${roomId}.${feld}`, entwurf[k]); c[pos[feld]] = entwurf[k]; }
