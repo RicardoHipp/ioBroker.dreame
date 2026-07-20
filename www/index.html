@@ -1878,7 +1878,11 @@
       // eine 0, wenn nicht gewischt wird — das war eine Eigenmaechtigkeit von uns. HA
       // schickt unabhaengig vom Modus die Feuchtigkeitsstufe; ob gewischt wird,
       // entscheidet der Modus ohnehin. Was das Geraet aus einer 0 macht, wussten wir nicht.
-      const selects = [...selectedRooms].sort((a,b)=>a-b).map((id,i)=>
+      // Reihenfolge = die des Antippens. selectedRooms ist ein Set und behaelt sie; hier
+      // stand frueher ein sort() nach Raum-ID, das sie verworfen hat. HA sortiert ebenfalls
+      // nicht, sondern uebergibt selected_segments unveraendert (device.py 4659).
+      // Das ist auch die Reihenfolge, die im Badge als Nummer steht.
+      const selects = [...selectedRooms].map((id,i)=>
         [id, 1, globalSaug, globalWasser, customizedFaehig ? 1 : i+1]);
       cmd('remote.start-custom-clean', JSON.stringify([{piid:1,value:18},{piid:10,value:JSON.stringify({selects})}]));
       selectedRooms.clear(); // Auswahl nach dem Start leeren, damit sie nicht beim naechsten Mal "vergessen" mitläuft

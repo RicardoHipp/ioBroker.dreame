@@ -85,6 +85,13 @@ sofort wieder weg. Mit der Maus am PC ging es.
 und wächst mit der eingestellten Anzeigegröße mit, und ein Antippen wird nicht mehr als
 Verschieben der Karte gewertet, wenn der Finger dabei ein paar Pixel verrutscht.
 
+### Die Reihenfolge der Räume ist die, in der man sie antippt
+**Vorher:** Die gewählten Räume gingen nach ihrer internen Nummer sortiert an den Roboter —
+in welcher Reihenfolge man sie angetippt hatte, spielte keine Rolle.
+**Jetzt:** Der Roboter bekommt sie in genau der Reihenfolge, in der du sie ausgewählt hast.
+Am Raum steht die Nummer in einem farbigen Kreis, du siehst also vorher, wie er fahren
+wird. Tippst du einen Raum ab und wieder an, rutscht er ans Ende.
+
 ### Es werden wieder alle gewählten Räume gereinigt
 **Vorher:** Wählte man mehrere Räume aus, fuhr der Roboter nur in den ersten und danach
 zurück zur Station. Die übrigen wurden übersprungen — ohne Fehlermeldung.
