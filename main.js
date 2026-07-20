@@ -2689,6 +2689,10 @@ class Dreame extends utils.Adapter {
     this.log.info(
       `Vacuum states created: ${statusStates.length} status, ${remoteStates.length} remote, ${autoSwitchRemotes.length} autoSwitch, ${actionStates.length} actions`,
     );
+    // FORK: Kurzbefehle aus dem zuletzt bekannten Wert aufbauen (lib/shortcuts.js).
+    // Noetig, weil 4-48 sich selten aendert: das Geraet pusht es kaum, und die
+    // Sammelabfrage liefert fuer Dienst 4 nicht zuverlaessig etwas.
+    await this._kurzbefehleNachholen(did);
   }
   async _setCustomRoomCleaningMap(device, mapId, areaInfo, displayName) {
     const did = device.did;
