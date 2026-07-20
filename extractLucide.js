@@ -27,6 +27,8 @@ const AUS_LUCIDE = {
   anAus:         'Circle',        // Ansicht-Schalter aus (vorher '●' in Grau)
   wasser:        'Droplet',       // Badge: Wassermenge
   wiederholung:  'Repeat',        // Badge: nur wenn > 1
+  badgeAn:       'Eye',           // Knopf auf der Karte: Raum-Badges ein/aus
+  badgeAus:      'EyeOff',
   // Die Reinigungsrouten stehen weiter unten unter EIGEN — dafuer gibt es weder in Lucide
   // noch in HAs Material-Icons etwas Brauchbares, s. Kommentar dort.
   // --- Zustandsleiste / Verbrauchsmaterial / Behaelter ---

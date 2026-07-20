@@ -85,6 +85,12 @@ sofort wieder weg. Mit der Maus am PC ging es.
 und wächst mit der eingestellten Anzeigegröße mit, und ein Antippen wird nicht mehr als
 Verschieben der Karte gewertet, wenn der Finger dabei ein paar Pixel verrutscht.
 
+### Die Raum-Angaben lassen sich wegklicken
+**Jetzt:** Oben links auf der Karte, neben dem Namen des Roboters, sitzt ein kleiner Knopf
+mit einem Auge. Damit blendet man die Angaben an den Räumen aus — praktisch während einer
+Reinigung, wenn man die Karte selbst sehen will. Nochmal drücken bringt sie zurück.
+Die Einstellung gilt nur, solange die Seite offen ist.
+
 ### Die Reihenfolge der Räume ist die, in der man sie antippt
 **Vorher:** Die gewählten Räume gingen nach ihrer internen Nummer sortiert an den Roboter —
 in welcher Reihenfolge man sie angetippt hatte, spielte keine Rolle.
