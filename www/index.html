@@ -1306,7 +1306,6 @@
     // Anzeige 1-4, intern 0-3
     if (raumSaugt(id))  teile.push(['saugen', String((einheitlich ? globalSaug : raumSaug(id)) + 1)]);
     if (raumWischt(id)) teile.push(['wasser', String(einheitlich ? globalWasser : raumWasser(id))]);
-    if (raumWdh(id) > 1) teile.push(['wiederholung', String(raumWdh(id))]);
     // Route nur, wenn der Raum AUSSCHLIESSLICH wischt — dieselbe Bedingung, unter der sie
     // sich auch einstellen laesst (HA select.py 676-679: cleaning_mode is MOPPING).
     // Ohne Zahl: die vier Stufen haben keine sinnvolle Nummer, das Icon steht fuer sich.
@@ -1314,6 +1313,9 @@
       const r = einheitlich ? cleanRoute : ((roomCleanset[id] && roomCleanset[id][5]) || 1);
       if (ROUTE_IKON[r]) teile.push([ROUTE_IKON[r], null]);
     }
+    // Wiederholung ganz hinten: sie sagt, wie OFT das Ganze laeuft, gehoert also hinter
+    // die Angaben, die beschreiben, WIE gereinigt wird.
+    if (raumWdh(id) > 1) teile.push(['wiederholung', String(raumWdh(id))]);
     if (!nurAnzeige) teile.push(['einstellungen', null]);                   // Hinweis: hier tippen
 
     let breite = BDG.rand * 2;
