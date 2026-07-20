@@ -66,6 +66,12 @@
     backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px);
   }
   *{box-sizing:border-box}
+  /* Das hidden-Attribut wirkt nur ueber eine Browser-Regel (display:none) — jede eigene
+     display-Angabe schlaegt sie. Betroffen war der Knopf auf der Karte (display:grid) und
+     die Meldungsbox (display:flex): die stand als leerer, orange umrandeter Kasten da,
+     obwohl sie versteckt sein sollte. Einmal zentral statt an jeder Klasse einzeln, sonst
+     faellt der naechste wieder darauf herein. */
+  [hidden]{display:none !important}
   html,body{margin:0;height:100%}
   body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
     background:var(--bg); color:var(--txt);}
