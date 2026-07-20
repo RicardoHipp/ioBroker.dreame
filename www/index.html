@@ -1058,6 +1058,10 @@
   // Kennung fuer den Reihenfolge-Kreis im Badge. Kein Icon-Name, sondern ein eigener
   // Bauteil-Typ (gefuellter Kreis mit Zahl darin) — s. baueBadge.
   const NR = '#nr';
+  // Raum-Reihenfolge des LAUFENDEN Auftrags, beim Start festgehalten. Waehrend der Fahrt
+  // ist die Auswahl geleert, und das Geraet meldet nur, welche Raeume dazugehoeren
+  // (activeSegments) — nicht in welcher Folge.
+  let auftragsFolge = [];
   function zeigeRoute(){
     const el = document.getElementById('routeVal');
     if (el) el.textContent = routeOf(cleanRoute).name;
@@ -1333,7 +1337,12 @@
     // Reihenfolge, in der angetippt wurde — abwaehlen und neu antippen stellt einen Raum
     // also ans Ende. Waehrend einer Fahrt gibt es keine Auswahl mehr, dann faellt die
     // Nummer weg.
-    const platz = geraetGestartet() ? -1 : [...selectedRooms].indexOf(+id);
+    // Waehrend einer Fahrt gibt es keine Auswahl mehr — dann zaehlt die beim Start
+    // festgehaltene Folge (auftragsFolge). Nach einem Neuladen der Seite mitten im Auftrag
+    // ist sie leer; dann faellt die Nummer weg, der Rest des Badges bleibt.
+    const platz = geraetGestartet()
+      ? auftragsFolge.indexOf(+id)
+      : [...selectedRooms].indexOf(+id);
     if (platz >= 0) teile.unshift([NR, String(platz + 1)]);
 
     let breite = BDG.rand * 2;
@@ -1885,6 +1894,10 @@
       const selects = [...selectedRooms].map((id,i)=>
         [id, 1, globalSaug, globalWasser, customizedFaehig ? 1 : i+1]);
       cmd('remote.start-custom-clean', JSON.stringify([{piid:1,value:18},{piid:10,value:JSON.stringify({selects})}]));
+      // Reihenfolge fuer die Anzeige waehrend der Fahrt festhalten — die Auswahl wird
+      // gleich geleert, danach waere sie nicht mehr zu ermitteln. Das Geraet meldet zwar,
+      // WELCHE Raeume zum Auftrag gehoeren (activeSegments), aber nicht in welcher Folge.
+      auftragsFolge = selects.map((s) => s[0]);
       selectedRooms.clear(); // Auswahl nach dem Start leeren, damit sie nicht beim naechsten Mal "vergessen" mitläuft
       drawFills(); updateLabels(); updateCleanPanel();
     };
