@@ -1450,13 +1450,19 @@
    * Reinigung an den Raeumen des laufenden Auftrags (womit gerade gefahren wird). Die
    * Auswahl wird beim Start geleert, sonst waeren waehrend der Fahrt gar keine Badges da.
    */
+  let badgeKnopfSymbol = null;
   /** Knopf auf der Karte: Symbol, Beschriftung und Zustand nachziehen. */
   function zeigeBadgeKnopf(){
     const b = document.getElementById('badgeBtn'); if (!b) return;
     // Nur waehrend einer Reinigung. Ohne laufenden Auftrag zeigen die Badges an, was man
     // gerade ausgewaehlt hat — da will man sie sehen, und es gibt nichts wegzuklicken.
     b.hidden = !geraetGestartet();
-    b.innerHTML = uiIcon(badgesAus ? 'badgeAus' : 'badgeAn', 15);
+    // Das SVG nur bei echtem Wechsel ersetzen. Diese Funktion laeuft bei JEDER
+    // Geraetemeldung; faellt ein innerHTML-Tausch zwischen Druecken und Loslassen, ist
+    // das angeklickte Element weg und der Klick kommt nie an — der Knopf reagierte
+    // scheinbar zufaellig nicht. Gleiches Vorgehen wie bei updateStartPause().
+    const symbol = badgesAus ? 'badgeAus' : 'badgeAn';
+    if (symbol !== badgeKnopfSymbol){ b.innerHTML = uiIcon(symbol, 15); badgeKnopfSymbol = symbol; }
     b.classList.toggle('aus', badgesAus);
     b.title = badgesAus ? 'Raum-Angaben einblenden' : 'Raum-Angaben ausblenden';
     b.setAttribute('aria-label', b.title);
