@@ -30,6 +30,7 @@ const { decodeMultiMapData } = require('./lib/dreame');
 // geheftet und verhalten sich dadurch exakt wie zuvor.
 
 const mapController = require('./lib/mapController');
+const shortcuts = require('./lib/shortcuts');
 
 const { getRoomDisplayName, buildSegmentTypeMap } = require('./lib/cleanset');
 
@@ -3765,6 +3766,12 @@ class Dreame extends utils.Adapter {
           if (this.isMower(device) && element.siid === 4 && element.piid === 48) {
             this.parseShortcuts(did, element.value);
           }
+          // FORK: Saugroboter haben dieselben Kurzbefehle — parseShortcuts kann sie bereits,
+          // wurde aber nur fuer Maeher aufgerufen. _kurzbefehleVacuum() ruft es auf und holt
+          // zusaetzlich die Teilaufgaben je Kurzbefehl vom Geraet (lib/shortcuts.js).
+          if (this.isVacuum(device) && element.siid === 4 && element.piid === 48) {
+            this._kurzbefehleVacuum(did, element.value);
+          }
           // Lazy create + setState für Properties mit bekannter Metadaten-Definition
           const lazyPath = await this._lazyCreateState(did, element.siid, element.piid, element.value);
           if (!lazyPath) {
@@ -5519,7 +5526,10 @@ class Dreame extends utils.Adapter {
           const stateObjSc = await this.getObjectAsync(id);
           if (stateObjSc && stateObjSc.native && stateObjSc.native.shortcutId !== undefined) {
             const device = this.deviceArray.find((obj) => obj.did === deviceId);
-            if (!device || !this.isMower(device)) return;
+            // FORK: war auf Maeher beschraenkt. Der Befehl darunter ist fuer beide derselbe
+            // (siid 4, aiid 1, piid 1 = 25 = Kurzbefehl, piid 10 = ID) und entspricht HAs
+            // start_shortcut (device.py 5019-5075).
+            if (!device || (!this.isMower(device) && !this.isVacuum(device))) return;
             const scId = String(stateObjSc.native.shortcutId);
             this.log.info(`Starting shortcut ${scId} for ${device.model}`);
             await this.sendCommand({
@@ -6175,6 +6185,7 @@ class Dreame extends utils.Adapter {
 // Karten-Methoden dieses Forks an die Klasse heften. Muss NACH der Klassendefinition
 // stehen und VOR der ersten Erzeugung einer Instanz.
 mapController.einhaengen(Dreame);
+shortcuts.einhaengen(Dreame);
 
 if (require.main !== module) {
   // Export the constructor in compact mode

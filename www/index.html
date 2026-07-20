@@ -260,6 +260,10 @@
   :root[data-leiste="unten"] .g-kopf .actbtns{margin-left:auto}
   :root[data-leiste="oben"] .g-kopf .abtn,
   :root[data-leiste="unten"] .g-kopf .abtn{flex:none}
+  /* Waagerecht ist Breite da: der Kurzbefehl-Knopf reiht sich links neben Start ein,
+     statt eine eigene Zeile zu belegen. */
+  :root[data-leiste="oben"] .abtn.kurz,
+  :root[data-leiste="unten"] .abtn.kurz{width:auto}
   :root[data-leiste="oben"] .untenrum,
   :root[data-leiste="unten"] .untenrum{
     display:flex; align-items:flex-start; gap:26px; margin-top:12px}
@@ -503,6 +507,14 @@
   .abtn.start{background:#2fae5c}
   .abtn.stop{background:#e0554a}
   .abtn.home{background:#4a78e0}
+  /* Kurzbefehle: zurueckhaltender als die drei Aktionen — er startet nichts von sich aus,
+     sondern oeffnet erst eine Auswahl. Deshalb Flaeche statt Farbe. */
+  .abtn.kurz{background:var(--panel2); color:var(--txt); border:1px solid var(--line)}
+  /* Senkrecht (Leiste links/rechts) eine eigene Zeile UEBER den Aktionen: die Leiste ist
+     schmal, vier Knoepfe nebeneinander waeren zu eng. Waagerecht ist Platz, dort reiht er
+     sich links neben Start ein (s. Ueberschreibung weiter unten). */
+  .actbtns{flex-wrap:wrap}
+  .abtn.kurz{width:100%}
   .abtn:disabled{opacity:.35;cursor:not-allowed}
   #err{color:#ff8098;font-size:12px;white-space:pre-wrap}
 </style>
@@ -547,6 +559,10 @@
           <!-- Meldungen: nur sichtbar, wenn wirklich etwas anliegt (s. updateInfo) -->
           <div class="warnbox" id="warnBox" hidden></div>
           <div class="actbtns">
+            <!-- Kurzbefehle. Senkrecht (Leiste links/rechts) eine eigene Zeile ueber den
+                 Aktionen, waagerecht links neben Start — s. CSS zu .kurzbtn. -->
+            <button class="abtn kurz" id="c-kurz" type="button" hidden
+                    title="Kurzbefehle" aria-label="Kurzbefehle"></button>
             <button class="abtn start" id="c-start" title="Start" aria-label="Reinigung starten">
               <span class="abtext">Start</span>
             </button>
@@ -1091,6 +1107,42 @@
   // Kennung fuer den Reihenfolge-Kreis im Badge. Kein Icon-Name, sondern ein eigener
   // Bauteil-Typ (gefuellter Kreis mit Zahl darin) — s. baueBadge.
   const NR = '#nr';
+  // ===== Kurzbefehle =====
+  // In der App gespeicherte Auftraege ("Wohnen saugen" o.ae.). Das Geraet liefert sie als
+  // Liste mit ID und Base64-Namen; gestartet werden sie ueber den vom Adapter angelegten
+  // Knopf shortcuts.<id>.start, der daraus siid 4 / aiid 1 mit piid 1 = 25 macht — genau
+  // wie HAs start_shortcut (device.py 5019-5075).
+  let kurzbefehle = [];   // [{id, name}]
+  function setzeKurzbefehle(rohwert){
+    kurzbefehle = [];
+    try {
+      const liste = typeof rohwert === 'string' ? JSON.parse(rohwert) : rohwert;
+      for (const sc of Array.isArray(liste) ? liste : []){
+        if (!sc || sc.id == null) continue;
+        kurzbefehle.push({ id: sc.id, name: sc.name ? b64Name(sc.name) || ('Kurzbefehl ' + sc.id)
+                                                    : ('Kurzbefehl ' + sc.id) });
+      }
+    } catch(e){}
+    const b = document.getElementById('c-kurz');
+    // Ohne Kurzbefehle keinen Knopf: viele Geraete haben schlicht keine.
+    if (b) b.hidden = !kurzbefehle.length;
+  }
+  /**
+   * Kurzfassung dessen, was ein Kurzbefehl tut — die Raumnamen, in seiner Reihenfolge.
+   * Quelle ist shortcuts.<id>.tasks, das der Adapter beim Geraet erfragt hat. Fehlt es
+   * (aeltere Adapterfassung, Abfrage fehlgeschlagen), bleibt die Zeile einfach leer.
+   */
+  async function kurzbefehlText(id){
+    if (!SOCK) return '';
+    const roh = await new Promise(r =>
+      SOCK.emit('getState', `dreame.0.${DID}.shortcuts.${id}.tasks`, (e,s)=> r(s && s.val)));
+    try {
+      const aufgaben = JSON.parse(roh);
+      if (!Array.isArray(aufgaben) || !aufgaben.length) return '';
+      const namen = aufgaben.map(a => roomName(a.raum, META && META.seg_inf));
+      return [...new Set(namen)].join(', ');
+    } catch(e){ return ''; }
+  }
   // Raum-Badges ausgeblendet? Nur fuer diese Sitzung, bewusst nicht gemerkt: das Ausblenden
   // ist ein kurzer Griff, um waehrend der Fahrt die Karte frei zu sehen — beim naechsten
   // Oeffnen will man die Angaben wieder haben.
@@ -1814,6 +1866,10 @@
     for (const [id, name] of [['c-stop','stop'], ['c-home','home']]){
       const el = document.getElementById(id); if (el) el.innerHTML = uiIcon(name, 20);
     }
+    // Kurzbefehle: Flaechen-Icon, deshalb fill statt stroke (s. FLAECHEN_IKON).
+    const kb = document.getElementById('c-kurz');
+    if (kb) kb.innerHTML = `<svg class="ico" width="20" height="20" viewBox="0 0 24 24"`
+      + ` fill="currentColor" stroke="none" aria-hidden="true">${(window.UI_ICONS||{}).kurzbefehl||''}</svg>`;
     updateStartPause();
     // Ansicht-Schalter tragen beide Zustaende; das CSS blendet nach .off um
     for (const b of document.querySelectorAll('.tgl')){
@@ -1959,6 +2015,17 @@
       cmd('remote.start-custom-clean', JSON.stringify([{piid:1,value:18},{piid:10,value:JSON.stringify({selects})}]));
       selectedRooms.clear(); // Auswahl nach dem Start leeren, damit sie nicht beim naechsten Mal "vergessen" mitläuft
       drawFills(); updateLabels(); updateCleanPanel();
+    };
+    // Kurzbefehle: Auswahl oeffnen, Klick startet. Gestartet wird ueber den Knopf, den der
+    // Adapter je Kurzbefehl anlegt — der baut daraus den Geraetebefehl. Die Beschreibung
+    // ("Wohnzimmer, Küche") kommt aus shortcuts.<id>.tasks und wird erst hier gelesen.
+    document.getElementById('c-kurz').onclick = async ()=>{
+      if (!kurzbefehle.length) return;
+      const eintraege = [];
+      for (const k of kurzbefehle){
+        eintraege.push({ id: k.id, name: k.name, desc: await kurzbefehlText(k.id) });
+      }
+      openPicker('Kurzbefehle', eintraege, null, (id)=> cmd(`shortcuts.${id}.start`, true));
     };
     // Stop beendet den GANZEN Auftrag. Waehrend eines Waschgangs bleibt der Wischmopp
     // dabei halb gewaschen zurueck — deshalb hier nachfragen statt sofort abbrechen.
@@ -3627,6 +3694,13 @@
         if (rWert != null && CLEAN_ROUTES.some(r => r.id === Number(rWert))) cleanRoute = Number(rWert);
         zeigeRoute();
         sock.emit('subscribe', ROUTE_ID);
+        // Kurzbefehle: die Liste steht als JSON in status.shortcuts (ID + Base64-Name).
+        // Was ein Kurzbefehl tut, holt der Adapter beim Geraet nach und legt es unter
+        // shortcuts.<id>.tasks ab (lib/shortcuts.js) — das lesen wir erst beim Oeffnen der
+        // Auswahl, sonst zieht der Verbindungsaufbau unnoetig in die Laenge.
+        const KURZ_ID = `dreame.0.${DID}.status.shortcuts`;
+        setzeKurzbefehle(await sGet(sock, KURZ_ID));
+        sock.emit('subscribe', KURZ_ID);
         for (const id of Object.keys(rooms||{})){
           const v = await sGet(sock, `dreame.0.${DID}.map.cleanset.${id}.RoomSettings`);
           if (typeof v === 'string') { try { roomCleanset[id] = JSON.parse(v); } catch(e){} }
@@ -3666,6 +3740,7 @@
           }
           else if (id===SUCT_ID && st.val!=null){ globalSaug   = Number(st.val); updateCleanPanel(); }
           else if (id===WET_ID  && st.val!=null){ globalWasser = Number(st.val); updateCleanPanel(); }
+          else if (id===KURZ_ID){ setzeKurzbefehle(st.val); }
           else if (id===ROUTE_ID && st.val!=null && CLEAN_ROUTES.some(r=>r.id===Number(st.val))){
             // Auch Aenderungen aus der App landen hier.
             cleanRoute = Number(st.val); zeigeRoute();

@@ -62,6 +62,8 @@ const EIGEN = {
     '<path d="m8 13.5 2-2 2 2"/>',
   ].join(''),
 
+  // "kurzbefehl" steht weiter unten — es kommt wie die Routen aus einer nachgezeichneten
+  // Vorlage (icons/kurzbefehl.svg), nicht aus Lucide.
 };
 
 // --- Reinigungsrouten: aus icons/routen/*.svg ---
@@ -116,15 +118,28 @@ function pfadBbox(d) {
 
 // Erst alle vier einlesen und vermessen, dann erst umrechnen: der Massstab wird gemeinsam
 // festgelegt (s.u.), dafuer muessen alle Groessen vorliegen.
-const gemessen = {};
-for (const [name, datei] of Object.entries(ROUTEN)) {
-  const pfad = require('path').join(__dirname, 'icons', 'routen', datei + '.svg');
+function liesFlaeche(...teile) {
+  const pfad = require('path').join(__dirname, 'icons', ...teile);
   const svg = fs.readFileSync(pfad, 'utf8');
   const treffer = [...svg.matchAll(/<path\b[\s\S]*?\/>/g)];
-  if (treffer.length !== 1) throw new Error(`${datei}.svg: ${treffer.length} Pfade, erwartet genau 1`);
+  if (treffer.length !== 1) throw new Error(`${teile.join('/')}: ${treffer.length} Pfade, erwartet genau 1`);
   const d = treffer[0][0].match(/d="([^"]*)"/)[1];
   const b = pfadBbox(d);
-  gemessen[name] = { d, b, w: b.maxX - b.minX, h: b.maxY - b.minY };
+  return { d, b, w: b.maxX - b.minX, h: b.maxY - b.minY };
+}
+
+/** Verschiebung + Massstab, die eine gemessene Form mittig ins 24er-Raster setzen. */
+function alsGruppe(g, s) {
+  const f = 24 - 2 * RAND;
+  const dx = RAND + (f - g.w * s) / 2 - g.b.minX * s;   // in beiden Achsen zentriert
+  const dy = RAND + (f - g.h * s) / 2 - g.b.minY * s;
+  return `<g transform="translate(${+dx.toFixed(4)} ${+dy.toFixed(4)}) scale(${+s.toFixed(6)})">`
+       + `<path d="${g.d}"/></g>`;
+}
+
+const gemessen = {};
+for (const [name, datei] of Object.entries(ROUTEN)) {
+  gemessen[name] = liesFlaeche('routen', datei + '.svg');
 }
 
 const feld = 24 - 2 * RAND;
@@ -134,12 +149,14 @@ const feld = 24 - 2 * RAND;
 // ohne Rahmen ist die Form kleiner und wurde staerker vergroessert.
 const massstab = Math.min(...Object.values(gemessen).map((g) => feld / Math.max(g.w, g.h)));
 
-for (const [name, g] of Object.entries(gemessen)) {
-  const s = massstab;
-  const dx = RAND + (feld - g.w * s) / 2 - g.b.minX * s;   // in beiden Achsen zentriert
-  const dy = RAND + (feld - g.h * s) / 2 - g.b.minY * s;
-  EIGEN[name] = `<g transform="translate(${+dx.toFixed(4)} ${+dy.toFixed(4)}) scale(${+s.toFixed(6)})">`
-              + `<path d="${g.d}"/></g>`;
+for (const [name, g] of Object.entries(gemessen)) EIGEN[name] = alsGruppe(g, massstab);
+
+// Kurzbefehle: Speicherkarte mit Play, ebenfalls nach dem Vorbild der App nachgezeichnet.
+// Steht fuer sich und bekommt deshalb einen eigenen Massstab — der gemeinsame der Routen
+// gilt nur untereinander, damit deren Bahnen gleich gross wirken.
+{
+  const g = liesFlaeche('kurzbefehl.svg');
+  EIGEN.kurzbefehl = alsGruppe(g, feld / Math.max(g.w, g.h));
 }
 
 function alsMarkup(def) {

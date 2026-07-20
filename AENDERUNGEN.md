@@ -85,6 +85,16 @@ sofort wieder weg. Mit der Maus am PC ging es.
 und wächst mit der eingestellten Anzeigegröße mit, und ein Antippen wird nicht mehr als
 Verschieben der Karte gewertet, wenn der Finger dabei ein paar Pixel verrutscht.
 
+### Kurzbefehle aus der App lassen sich starten
+**Vorher:** Die in der App gespeicherten Kurzbefehle („Wohnen saugen" und ähnliche) waren
+im Adapter nur für Rasenmäher nutzbar — beim Saugroboter tauchten sie gar nicht auf.
+**Jetzt:** Es gibt einen eigenen Knopf bei den Aktionen. Er öffnet die Liste der
+Kurzbefehle; ein Tipp startet einen. Darunter steht jeweils, welche Räume dazugehören.
+Hat der Roboter keine Kurzbefehle gespeichert, erscheint der Knopf gar nicht erst.
+
+Im Objektbaum liegen sie unter `shortcuts.<Nummer>` mit Name, Laufzustand und einem
+Startknopf — nutzbar also auch aus Skripten heraus.
+
 ### Die Raum-Angaben lassen sich während der Reinigung wegklicken
 **Jetzt:** Läuft eine Reinigung, erscheint oben auf der Karte rechts neben dem Namen des
 Roboters ein kleiner Knopf mit einem Auge. Damit blendet man die Angaben an den Räumen aus,
