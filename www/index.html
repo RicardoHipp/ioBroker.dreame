@@ -2972,7 +2972,11 @@
     // Echte Bedienelemente ueber der Karte (Zoom-Leiste) duerfen das Ziehen nicht ausloesen:
     // setPointerCapture unten wuerde sonst auch den anschliessenden Klick auf die Karte
     // umleiten, und der Knopf bekaeme ihn nie zu sehen.
-    const aufBedienung = t => !!(t && t.closest && t.closest('.zoom'));
+    // Alles, was AUF der Karte liegt, aber ein eigener Bedienknopf ist: Zoom-Leiste und der
+    // Knopf zum Ausblenden der Raum-Angaben. Ohne diese Ausnahme faengt stage den Zeiger
+    // per setPointerCapture ein, und der Klick kommt beim Knopf nie an — genau der Fehler,
+    // den die Zoom-Knoepfe frueher hatten.
+    const aufBedienung = t => !!(t && t.closest && (t.closest('.zoom') || t.closest('.kartenbtn')));
     stage.addEventListener('pointerdown', e=>{ if(aufBedienung(e.target)) return;
       drag=true; lx=e.clientX; ly=e.clientY; sx0=e.clientX; sy0=e.clientY; downT=e.target; wrap.classList.add('drag'); stage.setPointerCapture(e.pointerId); });
     stage.addEventListener('pointermove', e=>{ if(!drag)return; tx+=e.clientX-lx; ty+=e.clientY-ly; lx=e.clientX; ly=e.clientY; clamp(); applyT(); });
