@@ -1050,6 +1050,10 @@
   function zeigeRoute(){
     const el = document.getElementById('routeVal');
     if (el) el.textContent = routeOf(cleanRoute).name;
+    // Im Einheitlich-Betrieb steht die Route auch als Symbol an jedem Raum, der nur wischt
+    // (s. baueBadge). Ohne diesen Aufruf blieb dort das alte Symbol stehen, waehrend die
+    // Kachel schon den neuen Wert zeigte.
+    updateRoomBadges();
   }
   /**
    * Nach einem Moduswechsel kann die eingestellte Route wegfallen (Intensiv/Tief gibt es
