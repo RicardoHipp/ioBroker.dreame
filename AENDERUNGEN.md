@@ -111,9 +111,9 @@ Wischen, denn nur dort wertet der Roboter sie je Raum aus. Zur Auswahl stehen St
 Intensiv und Tief; „Schnell" gibt es nur für die gesamte Reinigung, nicht je Raum.
 Im Fenster steht also immer nur das, was für diesen Raum auch wirklich zählt.
 
-Am Raum in der Karte erscheint die Route zusätzlich als Symbol — Wellenlinie für Standard,
-Pfeile für Intensiv, Spirale für Tief, Blitz für Schnell. Auch das nur bei Räumen, die
-ausschließlich gewischt werden.
+Am Raum in der Karte erscheint die Route zusätzlich als Symbol. Die Zeichen zeigen — wie in
+der App — das Fahrmuster selbst: je gründlicher die Route, desto enger die Bahnen. Auch das
+nur bei Räumen, die ausschließlich gewischt werden.
 
 ### Die Route lässt sich einstellen
 **Vorher:** Die Route aus der App (Schnell, Standard, Intensiv, Tief) gab es im Widget

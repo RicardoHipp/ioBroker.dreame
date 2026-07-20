@@ -1263,14 +1263,21 @@
   const BDG_SKALA = 1.05;
 
   /** Ein Icon aus UI_ICONS als SVG-Gruppe, auf px-Kantenlaenge gebracht. */
+  // Die Routen-Icons kommen aus den nachgezeichneten App-Vorlagen und sind FLAECHEN,
+  // nicht Striche wie die Lucide-Icons. Mit fill="none" waeren sie unsichtbar.
+  const FLAECHEN_IKON = new Set(['routeSchnell','routeStandard','routeIntensiv','routeTief']);
   function svgIkon(name, px, klasse){
     const d = (window.UI_ICONS||{})[name]; if (!d) return null;
     const g = document.createElementNS(NS,'g');
     if (klasse) g.setAttribute('class', klasse);
-    g.setAttribute('fill','none'); g.setAttribute('stroke','currentColor');
-    // Strichstaerke gegen die Verkleinerung anheben, sonst wird das Icon fadendünn
-    g.setAttribute('stroke-width', 2.4); g.setAttribute('stroke-linecap','round');
-    g.setAttribute('stroke-linejoin','round');
+    if (FLAECHEN_IKON.has(name)){
+      g.setAttribute('fill','currentColor'); g.setAttribute('stroke','none');
+    } else {
+      g.setAttribute('fill','none'); g.setAttribute('stroke','currentColor');
+      // Strichstaerke gegen die Verkleinerung anheben, sonst wird das Icon fadendünn
+      g.setAttribute('stroke-width', 2.4); g.setAttribute('stroke-linecap','round');
+      g.setAttribute('stroke-linejoin','round');
+    }
     g.setAttribute('transform', `translate(0 ${-px/2}) scale(${px/24})`);
     g.innerHTML = d;
     return g;
