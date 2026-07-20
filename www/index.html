@@ -2413,7 +2413,7 @@
     // Laeuft ein Kurzbefehl, steht sein Name statt des nackten "Kurzbefehl laeuft" da —
     // das Geraet meldet ihn in status.shortcuts mit (s. setzeKurzbefehle).
     t.textContent = (VST.state===STATE_SHORTCUT && laufenderKurzbefehl)
-      ? `Kurzbefehl „${laufenderKurzbefehl}“`
+      ? `„${laufenderKurzbefehl}“ läuft`
       : ((VST.state!=null && STATE_DE[VST.state]) ? STATE_DE[VST.state]
                                                   : (VST.state!=null ? 'Status '+VST.state : '–'));
     const parts=[];

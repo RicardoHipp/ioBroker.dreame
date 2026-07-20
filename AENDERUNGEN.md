@@ -92,7 +92,7 @@ im Adapter nur für Rasenmäher nutzbar — beim Saugroboter tauchten sie gar ni
 Kurzbefehle; ein Tipp startet einen. Darunter steht jeweils, welche Räume dazugehören.
 Hat der Roboter keine Kurzbefehle gespeichert, erscheint der Knopf gar nicht erst.
 
-Läuft einer, steht sein Name im Zustand — also „Kurzbefehl »Test«" statt nur
+Läuft einer, steht sein Name im Zustand — also „»Test« läuft" statt nur
 „Kurzbefehl läuft".
 
 Im Objektbaum liegen sie unter `shortcuts.<Nummer>` mit Name, Laufzustand und einem
