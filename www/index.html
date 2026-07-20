@@ -930,7 +930,9 @@
     35:'Trocknung von Staubbehälter und -beutel',
     36:'Trocknen von Staubbehälter/-beutel angehalten', 37:'Weiter zum zusätzlichen Reinigungsbereich',
     38:'Zusätzliche Reinigung läuft', 95:'Haustiersuche pausiert', 96:'Haustiersuche',
-    97:'Shortcut läuft', 98:'Kameraüberwachung läuft', 99:'Kameraüberwachung pausiert',
+    // "Kurzbefehl" statt HAs "Shortcut": im Widget heisst es ueberall so, und ein
+    // englischer Brocken mitten im deutschen Zustandstext liest sich schlecht.
+    97:'Kurzbefehl läuft', 98:'Kameraüberwachung läuft', 99:'Kameraüberwachung pausiert',
     101:'Anfängliche Tiefenreinigung läuft', 102:'Anfängliche Tiefenreinigung pausiert',
     103:'Desinfizieren', 104:'Desinfizieren mit Trocknen', 105:'Wischmopp wird gewechselt',
     106:'Umschalten des Wischmopps pausiert', 107:'Pflege im Gange', 108:'Pflege pausiert',
@@ -1112,20 +1114,26 @@
   // Liste mit ID und Base64-Namen; gestartet werden sie ueber den vom Adapter angelegten
   // Knopf shortcuts.<id>.start, der daraus siid 4 / aiid 1 mit piid 1 = 25 macht — genau
   // wie HAs start_shortcut (device.py 5019-5075).
-  let kurzbefehle = [];   // [{id, name}]
+  let kurzbefehle = [];          // [{id, name}]
+  let laufenderKurzbefehl = null; // Name des gerade laufenden, sonst null
   function setzeKurzbefehle(rohwert){
     kurzbefehle = [];
+    laufenderKurzbefehl = null;
     try {
       const liste = typeof rohwert === 'string' ? JSON.parse(rohwert) : rohwert;
       for (const sc of Array.isArray(liste) ? liste : []){
         if (!sc || sc.id == null) continue;
-        kurzbefehle.push({ id: sc.id, name: sc.name ? b64Name(sc.name) || ('Kurzbefehl ' + sc.id)
-                                                    : ('Kurzbefehl ' + sc.id) });
+        const name = sc.name ? (b64Name(sc.name) || ('Kurzbefehl ' + sc.id)) : ('Kurzbefehl ' + sc.id);
+        kurzbefehle.push({ id: sc.id, name });
+        // Das Geraet haengt dem laufenden Kurzbefehl ein Feld "state" an. Dieselbe Pruefung
+        // wie im Adapter (parseShortcuts) und in HA (device.py 5407-5411).
+        if (sc.state === '0' || sc.state === '1') laufenderKurzbefehl = name;
       }
     } catch(e){}
     const b = document.getElementById('c-kurz');
     // Ohne Kurzbefehle keinen Knopf: viele Geraete haben schlicht keine.
     if (b) b.hidden = !kurzbefehle.length;
+    updateStatusPanel();   // im Zustandstext steht der Name des laufenden Kurzbefehls
   }
   /**
    * Kurzfassung dessen, was ein Kurzbefehl tut — die Raumnamen, in seiner Reihenfolge.
@@ -2402,7 +2410,12 @@
   function updateStatusPanel(){
     const t=document.getElementById('stateText'), s=document.getElementById('stateSub');
     if (!t) return;
-    t.textContent = (VST.state!=null && STATE_DE[VST.state]) ? STATE_DE[VST.state] : (VST.state!=null ? 'Status '+VST.state : '–');
+    // Laeuft ein Kurzbefehl, steht sein Name statt des nackten "Kurzbefehl laeuft" da —
+    // das Geraet meldet ihn in status.shortcuts mit (s. setzeKurzbefehle).
+    t.textContent = (VST.state===STATE_SHORTCUT && laufenderKurzbefehl)
+      ? `Kurzbefehl „${laufenderKurzbefehl}“`
+      : ((VST.state!=null && STATE_DE[VST.state]) ? STATE_DE[VST.state]
+                                                  : (VST.state!=null ? 'Status '+VST.state : '–'));
     const parts=[];
     // Akku mit Icon (Ladestecker, wenn er gerade laedt) statt eines Emojis
     if (VST.battery!=null)
@@ -2696,7 +2709,8 @@
   const TS = { UNKNOWN:-1, COMPLETED:0, DOCKING_PAUSED:11 };
   const ST = { CLEANING:2, BACK_HOME:3, PARTIAL_CLEANING:4, SEGMENT_CLEANING:18, ZONE_CLEANING:19,
                SPOT_CLEANING:20, FAST_MAPPING:21, CRUISING_PATH:22, CRUISING_POINT:23, SHORTCUT:25 };
-  const STATE_PAUSED = 3;   // types.py DreameVacuumState.PAUSED
+  const STATE_PAUSED = 3;    // types.py DreameVacuumState.PAUSED
+  const STATE_SHORTCUT = 97; // types.py DreameVacuumState.SHORTCUT
   // Optimistische Annahme nach einem Tipp (HA macht das ueber _update_property): ohne sie
   // zeigt der Knopf ein bis zwei Sekunden das alte Symbol, und ein zweiter Tipp in dieser
   // Zeit schickt den falschen Befehl.
