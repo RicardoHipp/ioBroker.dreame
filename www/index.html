@@ -423,15 +423,16 @@
     font-weight:700;color:var(--accent,#4a78e0);display:flex;align-items:center;gap:3px}
   .statsbtn:hover{text-decoration:underline}
   .statsbtn .chev{opacity:.7}
-  /* Ueberschrift "Verbrauchsmaterial" samt Reset-Symbol als EIN Knopf. Traegt die h2-Optik
-     (uppercase, gespreizt, gedaempft) und nimmt mit flex:1 die Zeile ein — dadurch steht
-     die Statistik rechts, wie zuvor beim h2. Das Symbol sitzt direkt hinter dem Wort. */
-  .verbrauchkopf{flex:1;background:none;border:none;padding:0;margin:0 0 12px;cursor:pointer;
-    display:inline-flex;align-items:center;gap:6px;
-    font:inherit;font-size:11px;text-transform:uppercase;letter-spacing:1px;
-    color:var(--muted);text-align:left}
-  .verbrauchkopf:hover{color:var(--accent,#4a78e0)}
-  .verbrauchkopf .ico{opacity:.85}
+  /* Ueberschrift "Verbrauchsmaterial" samt Reset-Symbol als EIN Knopf. Der Knopf selbst ist
+     unsichtbar — die Optik liefert das h2 darin, unveraendert. flex:1 (staerker als die
+     .abschnitt-Regel darueber) laesst ihn die Zeile einnehmen, damit die Statistik rechts
+     bleibt. Das Symbol sitzt direkt hinter dem Wort, nicht am Zeilenende. */
+  .abschnitt > .verbrauchkopf{flex:1}
+  .verbrauchkopf{background:none;border:none;padding:0;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;color:inherit;text-align:left}
+  .verbrauchkopf h2{flex:none}   /* nicht wachsen — sonst rutscht das Symbol ans Zeilenende */
+  .verbrauchkopf .ico{color:var(--muted);opacity:.85}
+  .verbrauchkopf:hover .ico{color:var(--accent,#4a78e0);opacity:1}
   .statlist{display:flex;flex-direction:column;gap:5px;margin-top:8px;font-size:12.5px}
   .statlist div{display:flex;justify-content:space-between;gap:10px}
   .statlist span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
@@ -619,11 +620,11 @@
             <div class="abschnitt">
               <!-- Titel und Reset-Symbol als EIN Knopf: das Symbol sitzt direkt neben dem
                    Wort, und die ganze Ueberschrift ist die Tippflaeche (besser am Tablet).
-                   Traegt die h2-Optik selbst, damit die Ueberschrift gleich aussieht. -->
+                   Das h2 bleibt drin und behaelt seine Optik unveraendert. -->
               <button class="verbrauchkopf" id="resetBtn" type="button" hidden
                       title="Verbrauchsmaterial zurücksetzen"
                       aria-label="Verbrauchsmaterial zurücksetzen">
-                <span>Verbrauchsmaterial</span>
+                <h2>Verbrauchsmaterial</h2>
               </button>
               <button class="statsbtn" id="statsBtn" type="button" hidden>Statistik</button>
             </div>
