@@ -428,7 +428,10 @@
      .abschnitt-Regel darueber) laesst ihn die Zeile einnehmen, damit die Statistik rechts
      bleibt. Das Symbol sitzt direkt hinter dem Wort, nicht am Zeilenende. */
   .abschnitt > .verbrauchkopf{flex:1}
-  .verbrauchkopf{background:none;border:none;padding:0;cursor:pointer;
+  /* font:inherit ist noetig: sonst nimmt der Button seine eigene System-Schrift, und das
+     h2 darin erbt die — dadurch wirkte "Verbrauchsmaterial" duenner als "Reinigung".
+     Das h2 setzt Groesse/Farbe/Fett selbst, nur die Schriftfamilie muss stimmen. */
+  .verbrauchkopf{background:none;border:none;padding:0;cursor:pointer;font:inherit;
     display:inline-flex;align-items:center;gap:6px;color:inherit;text-align:left}
   .verbrauchkopf h2{flex:none}   /* nicht wachsen — sonst rutscht das Symbol ans Zeilenende */
   .verbrauchkopf .ico{color:var(--muted);opacity:.85}
