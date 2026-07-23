@@ -18,6 +18,7 @@ const AUS_LUCIDE = {
   zoomEin:       'Plus',
   zoomAus:       'Minus',
   zoomReset:     'RotateCcw',
+  zuruecksetzen: 'RotateCcw',    // Verbrauchsmaterial-Zaehler zuruecksetzen
   start:         'Play',           // derselbe Knopf zeigt je nach Zustand start oder pause
   pause:         'Pause',
   stop:          'Square',

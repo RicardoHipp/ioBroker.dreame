@@ -423,6 +423,12 @@
     font-weight:700;color:var(--accent,#4a78e0);display:flex;align-items:center;gap:3px}
   .statsbtn:hover{text-decoration:underline}
   .statsbtn .chev{opacity:.7}
+  /* Kleiner Icon-Knopf in der Ueberschrift (Verbrauchsmaterial zuruecksetzen). Wie
+     .statsbtn unaufdringlich, aber nur ein Symbol. Die Rechtsausrichtung uebernimmt das
+     h2 mit flex:1 (s.o.) — kein eigenes margin noetig. */
+  .ikonbtn{background:none;border:none;padding:2px;cursor:pointer;color:var(--muted);
+    display:inline-flex;align-items:center}
+  .ikonbtn:hover{color:var(--accent,#4a78e0)}
   .statlist{display:flex;flex-direction:column;gap:5px;margin-top:8px;font-size:12.5px}
   .statlist div{display:flex;justify-content:space-between;gap:10px}
   .statlist span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
@@ -609,6 +615,9 @@
           <section class="gruppe g-verbrauch">
             <div class="abschnitt">
               <h2 id="verbrauchTitel" hidden>Verbrauchsmaterial</h2>
+              <button class="ikonbtn" id="resetBtn" type="button" hidden
+                      title="Verbrauchsmaterial zurücksetzen"
+                      aria-label="Verbrauchsmaterial zurücksetzen"></button>
               <button class="statsbtn" id="statsBtn" type="button" hidden>Statistik</button>
             </div>
             <div class="verbrauch" id="verbrauch"></div>
@@ -1902,6 +1911,8 @@
     const sb = document.getElementById('statsBtn');
     if (sb){ sb.insertAdjacentHTML('beforeend', uiIcon('weiter',14,'chev'));
              sb.onclick = openStatistik; }
+    const rb = document.getElementById('resetBtn');
+    if (rb){ rb.innerHTML = uiIcon('zuruecksetzen',15); rb.onclick = openReset; }
     for (const s of document.querySelectorAll('.klapp summary')){
       s.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev'));
     }
@@ -2438,11 +2449,14 @@
   // gebaut wird nur, was INFO.hat[...] beim Verbinden als vorhanden gemeldet hat.
   //
   // Namen wie in HA (sensor.py / const.py), Reihenfolge nach Wechselhaeufigkeit.
+  // reset: der remote.*-Knopf, der diesen Zaehler auf 100 % setzt. Den legt der Adapter
+  // nur fuer die vier klassischen Verbrauchsteile an (Aktionen 9-1/10-1/11-1/16-1, wie HA);
+  // die uebrigen Zeilen zeigen nur an und tauchen im Zuruecksetzen-Dialog nicht auf.
   const VERBRAUCH = [
-    { obj:'main-brush-left',   name:'Hauptbürste',  ikon:'hauptbuerste' },
-    { obj:'side-brush-left',   name:'Seitenbürste', ikon:'seitenbuerste' },
-    { obj:'filter-left',       name:'Filter',       ikon:'filter' },
-    { obj:'sensor-dirty-left', name:'Sensoren',     ikon:'sensoren' },
+    { obj:'main-brush-left',   name:'Hauptbürste',  ikon:'hauptbuerste', reset:'reset-main-brush' },
+    { obj:'side-brush-left',   name:'Seitenbürste', ikon:'seitenbuerste', reset:'reset-side-brush' },
+    { obj:'filter-left',       name:'Filter',       ikon:'filter', reset:'reset-filter' },
+    { obj:'sensor-dirty-left', name:'Sensoren',     ikon:'sensoren', reset:'reset-sensor' },
     { obj:'mop-pad-left',      name:'Wischtuch',    ikon:'wischtuch' },
     { obj:'detergent-left',    name:'Reinigungsm.', ikon:'mittel' },
     { obj:'silver-ion-left',   name:'Silberionen',  ikon:'mittel' },
@@ -2635,8 +2649,34 @@
     }).join('');
     document.getElementById('verbrauchTitel').hidden = !vb.innerHTML;
 
+    // --- Zuruecksetzen: Knopf nur, wenn es ueberhaupt ruecksetzbare Teile gibt ---
+    document.getElementById('resetBtn').hidden = !ruecksetzbar().length;
     // --- Statistik: nur den Knopf ein-/ausblenden, der Inhalt entsteht beim Oeffnen ---
     document.getElementById('statsBtn').hidden = !statistikZeilen().length;
+  }
+  /** Verbrauchsteile, die das Geraet meldet UND fuer die es einen Reset-Knopf gibt. */
+  function ruecksetzbar(){
+    return VERBRAUCH.filter(v => v.reset && INFO.hat[v.obj]);
+  }
+  /**
+   * Verbrauchsmaterial zuruecksetzen. Zweistufig: erst das Teil waehlen, dann bestaetigen —
+   * der Zaehler geht auf 100 % und die bisherige Abnutzung ist weg, das soll kein
+   * versehentlicher Tipp ausloesen. Gesendet wird der remote.reset-*-Knopf, den der Adapter
+   * anlegt; der schickt die Geraeteaktion (9-1/10-1/11-1/16-1, wie HA).
+   */
+  function openReset(){
+    const teile = ruecksetzbar();
+    if (!teile.length) return;
+    const opts = teile.map(v => ({
+      id: v.reset, name: v.name,
+      desc: INFO.wert[v.obj]!=null ? `noch ${Math.round(Number(INFO.wert[v.obj]))} %` : '',
+    }));
+    openPicker('Zurücksetzen', opts, null, (resetObj)=>{
+      const name = (teile.find(v => v.reset === resetObj) || {}).name || '';
+      openPicker(`„${name}“ zurücksetzen?`, [
+        { id:'ja', name:'Zurücksetzen', desc:'Zähler auf 100 %' },
+      ], null, ()=> cmd(`remote.${resetObj}`, true));
+    });
   }
 
   /** Die Statistik-Zeilen, die das Geraet tatsaechlich liefert. */

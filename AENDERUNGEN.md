@@ -85,6 +85,13 @@ sofort wieder weg. Mit der Maus am PC ging es.
 und wächst mit der eingestellten Anzeigegröße mit, und ein Antippen wird nicht mehr als
 Verschieben der Karte gewertet, wenn der Finger dabei ein paar Pixel verrutscht.
 
+### Verbrauchsmaterial lässt sich zurücksetzen
+**Jetzt:** Neben der Überschrift „Verbrauchsmaterial" gibt es ein kleines Symbol. Ein Tipp
+öffnet eine Liste mit Hauptbürste, Seitenbürste, Filter und Sensoren, jeweils mit dem
+aktuellen Prozentwert. Wählt man eines aus, kommt eine Rückfrage, und erst dann wird der
+Zähler auf 100 % gesetzt — so löst kein versehentlicher Tipp ein Zurücksetzen aus. Das ist
+gedacht für den Moment, in dem man ein Teil getauscht hat.
+
 ### Kurzbefehle aus der App lassen sich starten
 **Vorher:** Die in der App gespeicherten Kurzbefehle („Wohnen saugen" und ähnliche) waren
 im Adapter nur für Rasenmäher nutzbar — beim Saugroboter tauchten sie gar nicht auf.
