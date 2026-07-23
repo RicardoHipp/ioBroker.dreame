@@ -423,12 +423,15 @@
     font-weight:700;color:var(--accent,#4a78e0);display:flex;align-items:center;gap:3px}
   .statsbtn:hover{text-decoration:underline}
   .statsbtn .chev{opacity:.7}
-  /* Kleiner Icon-Knopf in der Ueberschrift (Verbrauchsmaterial zuruecksetzen). Wie
-     .statsbtn unaufdringlich, aber nur ein Symbol. Die Rechtsausrichtung uebernimmt das
-     h2 mit flex:1 (s.o.) — kein eigenes margin noetig. */
-  .ikonbtn{background:none;border:none;padding:2px;cursor:pointer;color:var(--muted);
-    display:inline-flex;align-items:center}
-  .ikonbtn:hover{color:var(--accent,#4a78e0)}
+  /* Ueberschrift "Verbrauchsmaterial" samt Reset-Symbol als EIN Knopf. Traegt die h2-Optik
+     (uppercase, gespreizt, gedaempft) und nimmt mit flex:1 die Zeile ein — dadurch steht
+     die Statistik rechts, wie zuvor beim h2. Das Symbol sitzt direkt hinter dem Wort. */
+  .verbrauchkopf{flex:1;background:none;border:none;padding:0;margin:0 0 12px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;
+    font:inherit;font-size:11px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--muted);text-align:left}
+  .verbrauchkopf:hover{color:var(--accent,#4a78e0)}
+  .verbrauchkopf .ico{opacity:.85}
   .statlist{display:flex;flex-direction:column;gap:5px;margin-top:8px;font-size:12.5px}
   .statlist div{display:flex;justify-content:space-between;gap:10px}
   .statlist span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
@@ -614,10 +617,14 @@
           </section>
           <section class="gruppe g-verbrauch">
             <div class="abschnitt">
-              <h2 id="verbrauchTitel" hidden>Verbrauchsmaterial</h2>
-              <button class="ikonbtn" id="resetBtn" type="button" hidden
+              <!-- Titel und Reset-Symbol als EIN Knopf: das Symbol sitzt direkt neben dem
+                   Wort, und die ganze Ueberschrift ist die Tippflaeche (besser am Tablet).
+                   Traegt die h2-Optik selbst, damit die Ueberschrift gleich aussieht. -->
+              <button class="verbrauchkopf" id="resetBtn" type="button" hidden
                       title="Verbrauchsmaterial zurücksetzen"
-                      aria-label="Verbrauchsmaterial zurücksetzen"></button>
+                      aria-label="Verbrauchsmaterial zurücksetzen">
+                <span>Verbrauchsmaterial</span>
+              </button>
               <button class="statsbtn" id="statsBtn" type="button" hidden>Statistik</button>
             </div>
             <div class="verbrauch" id="verbrauch"></div>
@@ -1912,7 +1919,7 @@
     if (sb){ sb.insertAdjacentHTML('beforeend', uiIcon('weiter',14,'chev'));
              sb.onclick = openStatistik; }
     const rb = document.getElementById('resetBtn');
-    if (rb){ rb.innerHTML = uiIcon('zuruecksetzen',15); rb.onclick = openReset; }
+    if (rb){ rb.insertAdjacentHTML('beforeend', uiIcon('zuruecksetzen',14)); rb.onclick = openReset; }
     for (const s of document.querySelectorAll('.klapp summary')){
       s.insertAdjacentHTML('beforeend', uiIcon('aufklappen',14,'chev'));
     }
@@ -2647,10 +2654,14 @@
            + `<span class="vbar"><i style="width:${p}%"></i></span>`
            + `<span class="vpct">${p} %</span></div>`;
     }).join('');
-    document.getElementById('verbrauchTitel').hidden = !vb.innerHTML;
-
-    // --- Zuruecksetzen: Knopf nur, wenn es ueberhaupt ruecksetzbare Teile gibt ---
-    document.getElementById('resetBtn').hidden = !ruecksetzbar().length;
+    // Ueberschrift (der Reset-Knopf trraegt sie) erscheint, sobald es Verbrauchszeilen gibt.
+    // Klickbar/als Knopf nur, wenn auch etwas ruecksetzbar ist — sonst nur Beschriftung.
+    const rb = document.getElementById('resetBtn');
+    rb.hidden = !vb.innerHTML;
+    const kannReset = ruecksetzbar().length > 0;
+    rb.disabled = !kannReset;
+    rb.style.cursor = kannReset ? '' : 'default';
+    const rico = rb.querySelector('.ico'); if (rico) rico.style.display = kannReset ? '' : 'none';
     // --- Statistik: nur den Knopf ein-/ausblenden, der Inhalt entsteht beim Oeffnen ---
     document.getElementById('statsBtn').hidden = !statistikZeilen().length;
   }
