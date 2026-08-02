@@ -61,3 +61,34 @@ beiden Ansichten an derselben Stelle, und was für den gewählten Modus nicht
 gilt (zum Beispiel Feuchtigkeit beim reinen Saugen), wird ausgegraut und mit
 "nicht verfügbar" beschriftet statt ausgeblendet. Dadurch springt beim
 Umschalten nichts mehr.
+
+---
+
+## Einstellungen: Menü-Breite lässt sich vernünftig einstellen
+
+**Was war:** Die Menü-Breite stellte man mit einem Schieberegler ein. Der war
+kaum zu bedienen: Das Einstellungs-Fenster sitzt neben der Bedienleiste — zieht
+man die Leiste breiter, rutscht das Fenster zur Seite, **und der Regler mit
+ihm, während man ihn festhält**. Er lief einem also unter dem Finger weg. Über
+den ganzen Bereich waren das 250 Pixel Versatz bei einem Regler, der nur 140
+Pixel breit ist.
+
+**Was jetzt geht:** Statt des Reglers gibt es ein Zahlenfeld mit − und +,
+genau wie beim UI-Zoom direkt darüber. Damit gibt es kein Ziehen mehr; pro
+Klick verschiebt sich das Fenster nur um einen Schritt, der Knopf bleibt also
+unter dem Mauszeiger. Die Breite lässt sich außerdem direkt eintippen, und die
+Schrittweite ist von 10 auf 5 Pixel verkleinert — damit trifft man die
+gewünschte Breite genauer.
+
+**Nebenbei behoben — betrifft auch den UI-Zoom:** In beiden Zeilen löste ein
+Klick auf die Beschriftung, auf die Einheit ("%" bzw. "px") oder einfach ins
+Leere der Zeile den **Minus-Knopf** aus. Man hat also den Wert verkleinert,
+ohne einen Knopf getroffen zu haben. Aus demselben Grund leuchtete der
+Minus-Knopf immer mit auf, sobald man irgendwo in die Zeile zeigte — deshalb
+sah es aus, als seien plötzlich beide Knöpfe umrandet. Beides ist behoben; ein
+Klick auf die Beschriftung setzt jetzt nur noch den Schreibcursor ins
+Zahlenfeld.
+
+**Kleinigkeit:** Die Zeilen "UI-Zoom" und "Menü-Breite" fluchten jetzt auf
+beiden Seiten. Vorher standen Minus-Knopf und Zahlenfeld der Menü-Breite drei
+Pixel weiter links, weil "px" breiter ist als "%".
