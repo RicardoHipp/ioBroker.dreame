@@ -57,6 +57,18 @@ const Trigger = (() => {
   const setCleaningRoute = (did, wert) => Daten.setState(pfad(did, 'set-cleaning-route'), wert);
   const setSuctionLevel = (did, wert) => Daten.setState(pfad(did, 'suction-level'), wert);
   const setWetnessLevel = (did, wert) => Daten.setState(pfad(did, 'wetness-level'), wert);
+  // Betriebsart: aus = einheitlich (ein Wert fuer alle Raeume), an = individuell (jeder
+  // Raum nach seinem gespeicherten cleanset). remote.customized-cleaning ist boolean/switch
+  // (SIID 4-26) -- deshalb true/false, nicht 0/1.
+  const setCustomizedCleaning = (did, an) => Daten.setState(pfad(did, 'customized-cleaning'), !!an);
+
+  // ===== Pro-Raum-Einstellungen ins gespeicherte cleanset schreiben (Individuell-Betrieb).
+  // Feld = Level | WaterVolume | CleaningMode | Route | Repeat. Der Adapter (main.js
+  // UpdateRoomSettings -> customeClean) liest die uebrigen Felder des Raums dazu und
+  // uebertraegt alle sechs dauerhaft ans Geraet -- die Aenderung ueberlebt also den
+  // naechsten App-Start, anders als die globalen Kacheln. =====
+  const cleansetPfad = (did, raumId, feld) => `dreame.0.${did}.map.cleanset.${raumId}.${feld}`;
+  const setCleansetFeld = (did, raumId, feld, wert) => Daten.setState(cleansetPfad(did, raumId, feld), wert);
 
   // ===== Tank-Verbrauch (Etappe D, Commit D1d): manueller Reset zusaetzlich zum
   // Auto-Reset-Timer im Adapter (D1c) -- fuer den Fall, dass der Nutzer sofort
@@ -112,7 +124,8 @@ const Trigger = (() => {
     startCleaning, startCustomRoomCleaning, stopCleaning, chargeHome,
     resetMainBrush, resetSideBrush, resetFilter, resetSensor,
     startWashing, startAutoEmpty, resumeWashing, pauseWashing, startDrying, stopDrying,
-    setCleaningMode, setCleaningRoute, setSuctionLevel, setWetnessLevel,
+    setCleaningMode, setCleaningRoute, setSuctionLevel, setWetnessLevel, setCustomizedCleaning,
+    setCleansetFeld,
     resetTankCounter,
   };
 })();
